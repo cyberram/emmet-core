@@ -1,1070 +1,11 @@
-//     Underscore.js 1.3.3
-//     (c) 2009-2012 Jeremy Ashkenas, DocumentCloud Inc.
-//     Underscore is freely distributable under the MIT license.
-//     Portions of Underscore are inspired or borrowed from Prototype,
-//     Oliver Steele's Functional, and John Resig's Micro-Templating.
-//     For all details and documentation:
-//     http://documentcloud.github.com/underscore
-
-var _ = (function() {
-
-  // Baseline setup
-  // --------------
-
-  // Establish the root object, `window` in the browser, or `global` on the server.
-  var root = this;
-
-  // Save the previous value of the `_` variable.
-  var previousUnderscore = root._;
-
-  // Establish the object that gets returned to break out of a loop iteration.
-  var breaker = {};
-
-  // Save bytes in the minified (but not gzipped) version:
-  var ArrayProto = Array.prototype, ObjProto = Object.prototype, FuncProto = Function.prototype;
-
-  // Create quick reference variables for speed access to core prototypes.
-  var slice            = ArrayProto.slice,
-      unshift          = ArrayProto.unshift,
-      toString         = ObjProto.toString,
-      hasOwnProperty   = ObjProto.hasOwnProperty;
-
-  // All **ECMAScript 5** native function implementations that we hope to use
-  // are declared here.
-  var
-    nativeForEach      = ArrayProto.forEach,
-    nativeMap          = ArrayProto.map,
-    nativeReduce       = ArrayProto.reduce,
-    nativeReduceRight  = ArrayProto.reduceRight,
-    nativeFilter       = ArrayProto.filter,
-    nativeEvery        = ArrayProto.every,
-    nativeSome         = ArrayProto.some,
-    nativeIndexOf      = ArrayProto.indexOf,
-    nativeLastIndexOf  = ArrayProto.lastIndexOf,
-    nativeIsArray      = Array.isArray,
-    nativeKeys         = Object.keys,
-    nativeBind         = FuncProto.bind;
-
-  // Create a safe reference to the Underscore object for use below.
-  var _ = function(obj) { return new wrapper(obj); };
-
-  // Export the Underscore object for **Node.js**, with
-  // backwards-compatibility for the old `require()` API. If we're in
-  // the browser, add `_` as a global object via a string identifier,
-  // for Closure Compiler "advanced" mode.
-  if (typeof exports !== 'undefined') {
-    if (typeof module !== 'undefined' && module.exports) {
-      exports = module.exports = _;
-    }
-    exports._ = _;
-  } else {
-    root['_'] = _;
-  }
-
-  // Current version.
-  _.VERSION = '1.3.3';
-
-  // Collection Functions
-  // --------------------
-
-  // The cornerstone, an `each` implementation, aka `forEach`.
-  // Handles objects with the built-in `forEach`, arrays, and raw objects.
-  // Delegates to **ECMAScript 5**'s native `forEach` if available.
-  var each = _.each = _.forEach = function(obj, iterator, context) {
-    if (obj == null) return;
-    if (nativeForEach && obj.forEach === nativeForEach) {
-      obj.forEach(iterator, context);
-    } else if (obj.length === +obj.length) {
-      for (var i = 0, l = obj.length; i < l; i++) {
-        if (i in obj && iterator.call(context, obj[i], i, obj) === breaker) return;
-      }
-    } else {
-      for (var key in obj) {
-        if (_.has(obj, key)) {
-          if (iterator.call(context, obj[key], key, obj) === breaker) return;
-        }
-      }
-    }
-  };
-
-  // Return the results of applying the iterator to each element.
-  // Delegates to **ECMAScript 5**'s native `map` if available.
-  _.map = _.collect = function(obj, iterator, context) {
-    var results = [];
-    if (obj == null) return results;
-    if (nativeMap && obj.map === nativeMap) return obj.map(iterator, context);
-    each(obj, function(value, index, list) {
-      results[results.length] = iterator.call(context, value, index, list);
-    });
-    if (obj.length === +obj.length) results.length = obj.length;
-    return results;
-  };
-
-  // **Reduce** builds up a single result from a list of values, aka `inject`,
-  // or `foldl`. Delegates to **ECMAScript 5**'s native `reduce` if available.
-  _.reduce = _.foldl = _.inject = function(obj, iterator, memo, context) {
-    var initial = arguments.length > 2;
-    if (obj == null) obj = [];
-    if (nativeReduce && obj.reduce === nativeReduce) {
-      if (context) iterator = _.bind(iterator, context);
-      return initial ? obj.reduce(iterator, memo) : obj.reduce(iterator);
-    }
-    each(obj, function(value, index, list) {
-      if (!initial) {
-        memo = value;
-        initial = true;
-      } else {
-        memo = iterator.call(context, memo, value, index, list);
-      }
-    });
-    if (!initial) throw new TypeError('Reduce of empty array with no initial value');
-    return memo;
-  };
-
-  // The right-associative version of reduce, also known as `foldr`.
-  // Delegates to **ECMAScript 5**'s native `reduceRight` if available.
-  _.reduceRight = _.foldr = function(obj, iterator, memo, context) {
-    var initial = arguments.length > 2;
-    if (obj == null) obj = [];
-    if (nativeReduceRight && obj.reduceRight === nativeReduceRight) {
-      if (context) iterator = _.bind(iterator, context);
-      return initial ? obj.reduceRight(iterator, memo) : obj.reduceRight(iterator);
-    }
-    var reversed = _.toArray(obj).reverse();
-    if (context && !initial) iterator = _.bind(iterator, context);
-    return initial ? _.reduce(reversed, iterator, memo, context) : _.reduce(reversed, iterator);
-  };
-
-  // Return the first value which passes a truth test. Aliased as `detect`.
-  _.find = _.detect = function(obj, iterator, context) {
-    var result;
-    any(obj, function(value, index, list) {
-      if (iterator.call(context, value, index, list)) {
-        result = value;
-        return true;
-      }
-    });
-    return result;
-  };
-
-  // Return all the elements that pass a truth test.
-  // Delegates to **ECMAScript 5**'s native `filter` if available.
-  // Aliased as `select`.
-  _.filter = _.select = function(obj, iterator, context) {
-    var results = [];
-    if (obj == null) return results;
-    if (nativeFilter && obj.filter === nativeFilter) return obj.filter(iterator, context);
-    each(obj, function(value, index, list) {
-      if (iterator.call(context, value, index, list)) results[results.length] = value;
-    });
-    return results;
-  };
-
-  // Return all the elements for which a truth test fails.
-  _.reject = function(obj, iterator, context) {
-    var results = [];
-    if (obj == null) return results;
-    each(obj, function(value, index, list) {
-      if (!iterator.call(context, value, index, list)) results[results.length] = value;
-    });
-    return results;
-  };
-
-  // Determine whether all of the elements match a truth test.
-  // Delegates to **ECMAScript 5**'s native `every` if available.
-  // Aliased as `all`.
-  _.every = _.all = function(obj, iterator, context) {
-    var result = true;
-    if (obj == null) return result;
-    if (nativeEvery && obj.every === nativeEvery) return obj.every(iterator, context);
-    each(obj, function(value, index, list) {
-      if (!(result = result && iterator.call(context, value, index, list))) return breaker;
-    });
-    return !!result;
-  };
-
-  // Determine if at least one element in the object matches a truth test.
-  // Delegates to **ECMAScript 5**'s native `some` if available.
-  // Aliased as `any`.
-  var any = _.some = _.any = function(obj, iterator, context) {
-    iterator || (iterator = _.identity);
-    var result = false;
-    if (obj == null) return result;
-    if (nativeSome && obj.some === nativeSome) return obj.some(iterator, context);
-    each(obj, function(value, index, list) {
-      if (result || (result = iterator.call(context, value, index, list))) return breaker;
-    });
-    return !!result;
-  };
-
-  // Determine if a given value is included in the array or object using `===`.
-  // Aliased as `contains`.
-  _.include = _.contains = function(obj, target) {
-    var found = false;
-    if (obj == null) return found;
-    if (nativeIndexOf && obj.indexOf === nativeIndexOf) return obj.indexOf(target) != -1;
-    found = any(obj, function(value) {
-      return value === target;
-    });
-    return found;
-  };
-
-  // Invoke a method (with arguments) on every item in a collection.
-  _.invoke = function(obj, method) {
-    var args = slice.call(arguments, 2);
-    return _.map(obj, function(value) {
-      return (_.isFunction(method) ? method || value : value[method]).apply(value, args);
-    });
-  };
-
-  // Convenience version of a common use case of `map`: fetching a property.
-  _.pluck = function(obj, key) {
-    return _.map(obj, function(value){ return value[key]; });
-  };
-
-  // Return the maximum element or (element-based computation).
-  _.max = function(obj, iterator, context) {
-    if (!iterator && _.isArray(obj) && obj[0] === +obj[0]) return Math.max.apply(Math, obj);
-    if (!iterator && _.isEmpty(obj)) return -Infinity;
-    var result = {computed : -Infinity};
-    each(obj, function(value, index, list) {
-      var computed = iterator ? iterator.call(context, value, index, list) : value;
-      computed >= result.computed && (result = {value : value, computed : computed});
-    });
-    return result.value;
-  };
-
-  // Return the minimum element (or element-based computation).
-  _.min = function(obj, iterator, context) {
-    if (!iterator && _.isArray(obj) && obj[0] === +obj[0]) return Math.min.apply(Math, obj);
-    if (!iterator && _.isEmpty(obj)) return Infinity;
-    var result = {computed : Infinity};
-    each(obj, function(value, index, list) {
-      var computed = iterator ? iterator.call(context, value, index, list) : value;
-      computed < result.computed && (result = {value : value, computed : computed});
-    });
-    return result.value;
-  };
-
-  // Shuffle an array.
-  _.shuffle = function(obj) {
-    var shuffled = [], rand;
-    each(obj, function(value, index, list) {
-      rand = Math.floor(Math.random() * (index + 1));
-      shuffled[index] = shuffled[rand];
-      shuffled[rand] = value;
-    });
-    return shuffled;
-  };
-
-  // Sort the object's values by a criterion produced by an iterator.
-  _.sortBy = function(obj, val, context) {
-    var iterator = _.isFunction(val) ? val : function(obj) { return obj[val]; };
-    return _.pluck(_.map(obj, function(value, index, list) {
-      return {
-        value : value,
-        criteria : iterator.call(context, value, index, list)
-      };
-    }).sort(function(left, right) {
-      var a = left.criteria, b = right.criteria;
-      if (a === void 0) return 1;
-      if (b === void 0) return -1;
-      return a < b ? -1 : a > b ? 1 : 0;
-    }), 'value');
-  };
-
-  // Groups the object's values by a criterion. Pass either a string attribute
-  // to group by, or a function that returns the criterion.
-  _.groupBy = function(obj, val) {
-    var result = {};
-    var iterator = _.isFunction(val) ? val : function(obj) { return obj[val]; };
-    each(obj, function(value, index) {
-      var key = iterator(value, index);
-      (result[key] || (result[key] = [])).push(value);
-    });
-    return result;
-  };
-
-  // Use a comparator function to figure out at what index an object should
-  // be inserted so as to maintain order. Uses binary search.
-  _.sortedIndex = function(array, obj, iterator) {
-    iterator || (iterator = _.identity);
-    var low = 0, high = array.length;
-    while (low < high) {
-      var mid = (low + high) >> 1;
-      iterator(array[mid]) < iterator(obj) ? low = mid + 1 : high = mid;
-    }
-    return low;
-  };
-
-  // Safely convert anything iterable into a real, live array.
-  _.toArray = function(obj) {
-    if (!obj)                                     return [];
-    if (_.isArray(obj))                           return slice.call(obj);
-    if (_.isArguments(obj))                       return slice.call(obj);
-    if (obj.toArray && _.isFunction(obj.toArray)) return obj.toArray();
-    return _.values(obj);
-  };
-
-  // Return the number of elements in an object.
-  _.size = function(obj) {
-    return _.isArray(obj) ? obj.length : _.keys(obj).length;
-  };
-
-  // Array Functions
-  // ---------------
-
-  // Get the first element of an array. Passing **n** will return the first N
-  // values in the array. Aliased as `head` and `take`. The **guard** check
-  // allows it to work with `_.map`.
-  _.first = _.head = _.take = function(array, n, guard) {
-    return (n != null) && !guard ? slice.call(array, 0, n) : array[0];
-  };
-
-  // Returns everything but the last entry of the array. Especcialy useful on
-  // the arguments object. Passing **n** will return all the values in
-  // the array, excluding the last N. The **guard** check allows it to work with
-  // `_.map`.
-  _.initial = function(array, n, guard) {
-    return slice.call(array, 0, array.length - ((n == null) || guard ? 1 : n));
-  };
-
-  // Get the last element of an array. Passing **n** will return the last N
-  // values in the array. The **guard** check allows it to work with `_.map`.
-  _.last = function(array, n, guard) {
-    if ((n != null) && !guard) {
-      return slice.call(array, Math.max(array.length - n, 0));
-    } else {
-      return array[array.length - 1];
-    }
-  };
-
-  // Returns everything but the first entry of the array. Aliased as `tail`.
-  // Especially useful on the arguments object. Passing an **index** will return
-  // the rest of the values in the array from that index onward. The **guard**
-  // check allows it to work with `_.map`.
-  _.rest = _.tail = function(array, index, guard) {
-    return slice.call(array, (index == null) || guard ? 1 : index);
-  };
-
-  // Trim out all falsy values from an array.
-  _.compact = function(array) {
-    return _.filter(array, function(value){ return !!value; });
-  };
-
-  // Return a completely flattened version of an array.
-  _.flatten = function(array, shallow) {
-    return _.reduce(array, function(memo, value) {
-      if (_.isArray(value)) return memo.concat(shallow ? value : _.flatten(value));
-      memo[memo.length] = value;
-      return memo;
-    }, []);
-  };
-
-  // Return a version of the array that does not contain the specified value(s).
-  _.without = function(array) {
-    return _.difference(array, slice.call(arguments, 1));
-  };
-
-  // Produce a duplicate-free version of the array. If the array has already
-  // been sorted, you have the option of using a faster algorithm.
-  // Aliased as `unique`.
-  _.uniq = _.unique = function(array, isSorted, iterator) {
-    var initial = iterator ? _.map(array, iterator) : array;
-    var results = [];
-    // The `isSorted` flag is irrelevant if the array only contains two elements.
-    if (array.length < 3) isSorted = true;
-    _.reduce(initial, function (memo, value, index) {
-      if (isSorted ? _.last(memo) !== value || !memo.length : !_.include(memo, value)) {
-        memo.push(value);
-        results.push(array[index]);
-      }
-      return memo;
-    }, []);
-    return results;
-  };
-
-  // Produce an array that contains the union: each distinct element from all of
-  // the passed-in arrays.
-  _.union = function() {
-    return _.uniq(_.flatten(arguments, true));
-  };
-
-  // Produce an array that contains every item shared between all the
-  // passed-in arrays. (Aliased as "intersect" for back-compat.)
-  _.intersection = _.intersect = function(array) {
-    var rest = slice.call(arguments, 1);
-    return _.filter(_.uniq(array), function(item) {
-      return _.every(rest, function(other) {
-        return _.indexOf(other, item) >= 0;
-      });
-    });
-  };
-
-  // Take the difference between one array and a number of other arrays.
-  // Only the elements present in just the first array will remain.
-  _.difference = function(array) {
-    var rest = _.flatten(slice.call(arguments, 1), true);
-    return _.filter(array, function(value){ return !_.include(rest, value); });
-  };
-
-  // Zip together multiple lists into a single array -- elements that share
-  // an index go together.
-  _.zip = function() {
-    var args = slice.call(arguments);
-    var length = _.max(_.pluck(args, 'length'));
-    var results = new Array(length);
-    for (var i = 0; i < length; i++) results[i] = _.pluck(args, "" + i);
-    return results;
-  };
-
-  // If the browser doesn't supply us with indexOf (I'm looking at you, **MSIE**),
-  // we need this function. Return the position of the first occurrence of an
-  // item in an array, or -1 if the item is not included in the array.
-  // Delegates to **ECMAScript 5**'s native `indexOf` if available.
-  // If the array is large and already in sort order, pass `true`
-  // for **isSorted** to use binary search.
-  _.indexOf = function(array, item, isSorted) {
-    if (array == null) return -1;
-    var i, l;
-    if (isSorted) {
-      i = _.sortedIndex(array, item);
-      return array[i] === item ? i : -1;
-    }
-    if (nativeIndexOf && array.indexOf === nativeIndexOf) return array.indexOf(item);
-    for (i = 0, l = array.length; i < l; i++) if (i in array && array[i] === item) return i;
-    return -1;
-  };
-
-  // Delegates to **ECMAScript 5**'s native `lastIndexOf` if available.
-  _.lastIndexOf = function(array, item) {
-    if (array == null) return -1;
-    if (nativeLastIndexOf && array.lastIndexOf === nativeLastIndexOf) return array.lastIndexOf(item);
-    var i = array.length;
-    while (i--) if (i in array && array[i] === item) return i;
-    return -1;
-  };
-
-  // Generate an integer Array containing an arithmetic progression. A port of
-  // the native Python `range()` function. See
-  // [the Python documentation](http://docs.python.org/library/functions.html#range).
-  _.range = function(start, stop, step) {
-    if (arguments.length <= 1) {
-      stop = start || 0;
-      start = 0;
-    }
-    step = arguments[2] || 1;
-
-    var len = Math.max(Math.ceil((stop - start) / step), 0);
-    var idx = 0;
-    var range = new Array(len);
-
-    while(idx < len) {
-      range[idx++] = start;
-      start += step;
-    }
-
-    return range;
-  };
-
-  // Function (ahem) Functions
-  // ------------------
-
-  // Reusable constructor function for prototype setting.
-  var ctor = function(){};
-
-  // Create a function bound to a given object (assigning `this`, and arguments,
-  // optionally). Binding with arguments is also known as `curry`.
-  // Delegates to **ECMAScript 5**'s native `Function.bind` if available.
-  // We check for `func.bind` first, to fail fast when `func` is undefined.
-  _.bind = function bind(func, context) {
-    var bound, args;
-    if (func.bind === nativeBind && nativeBind) return nativeBind.apply(func, slice.call(arguments, 1));
-    if (!_.isFunction(func)) throw new TypeError;
-    args = slice.call(arguments, 2);
-    return bound = function() {
-      if (!(this instanceof bound)) return func.apply(context, args.concat(slice.call(arguments)));
-      ctor.prototype = func.prototype;
-      var self = new ctor;
-      var result = func.apply(self, args.concat(slice.call(arguments)));
-      if (Object(result) === result) return result;
-      return self;
-    };
-  };
-
-  // Bind all of an object's methods to that object. Useful for ensuring that
-  // all callbacks defined on an object belong to it.
-  _.bindAll = function(obj) {
-    var funcs = slice.call(arguments, 1);
-    if (funcs.length == 0) funcs = _.functions(obj);
-    each(funcs, function(f) { obj[f] = _.bind(obj[f], obj); });
-    return obj;
-  };
-
-  // Memoize an expensive function by storing its results.
-  _.memoize = function(func, hasher) {
-    var memo = {};
-    hasher || (hasher = _.identity);
-    return function() {
-      var key = hasher.apply(this, arguments);
-      return _.has(memo, key) ? memo[key] : (memo[key] = func.apply(this, arguments));
-    };
-  };
-
-  // Delays a function for the given number of milliseconds, and then calls
-  // it with the arguments supplied.
-  _.delay = function(func, wait) {
-    var args = slice.call(arguments, 2);
-    return setTimeout(function(){ return func.apply(null, args); }, wait);
-  };
-
-  // Defers a function, scheduling it to run after the current call stack has
-  // cleared.
-  _.defer = function(func) {
-    return _.delay.apply(_, [func, 1].concat(slice.call(arguments, 1)));
-  };
-
-  // Returns a function, that, when invoked, will only be triggered at most once
-  // during a given window of time.
-  _.throttle = function(func, wait) {
-    var context, args, timeout, throttling, more, result;
-    var whenDone = _.debounce(function(){ more = throttling = false; }, wait);
-    return function() {
-      context = this; args = arguments;
-      var later = function() {
-        timeout = null;
-        if (more) func.apply(context, args);
-        whenDone();
-      };
-      if (!timeout) timeout = setTimeout(later, wait);
-      if (throttling) {
-        more = true;
-      } else {
-        result = func.apply(context, args);
-      }
-      whenDone();
-      throttling = true;
-      return result;
-    };
-  };
-
-  // Returns a function, that, as long as it continues to be invoked, will not
-  // be triggered. The function will be called after it stops being called for
-  // N milliseconds. If `immediate` is passed, trigger the function on the
-  // leading edge, instead of the trailing.
-  _.debounce = function(func, wait, immediate) {
-    var timeout;
-    return function() {
-      var context = this, args = arguments;
-      var later = function() {
-        timeout = null;
-        if (!immediate) func.apply(context, args);
-      };
-      if (immediate && !timeout) func.apply(context, args);
-      clearTimeout(timeout);
-      timeout = setTimeout(later, wait);
-    };
-  };
-
-  // Returns a function that will be executed at most one time, no matter how
-  // often you call it. Useful for lazy initialization.
-  _.once = function(func) {
-    var ran = false, memo;
-    return function() {
-      if (ran) return memo;
-      ran = true;
-      return memo = func.apply(this, arguments);
-    };
-  };
-
-  // Returns the first function passed as an argument to the second,
-  // allowing you to adjust arguments, run code before and after, and
-  // conditionally execute the original function.
-  _.wrap = function(func, wrapper) {
-    return function() {
-      var args = [func].concat(slice.call(arguments, 0));
-      return wrapper.apply(this, args);
-    };
-  };
-
-  // Returns a function that is the composition of a list of functions, each
-  // consuming the return value of the function that follows.
-  _.compose = function() {
-    var funcs = arguments;
-    return function() {
-      var args = arguments;
-      for (var i = funcs.length - 1; i >= 0; i--) {
-        args = [funcs[i].apply(this, args)];
-      }
-      return args[0];
-    };
-  };
-
-  // Returns a function that will only be executed after being called N times.
-  _.after = function(times, func) {
-    if (times <= 0) return func();
-    return function() {
-      if (--times < 1) { return func.apply(this, arguments); }
-    };
-  };
-
-  // Object Functions
-  // ----------------
-
-  // Retrieve the names of an object's properties.
-  // Delegates to **ECMAScript 5**'s native `Object.keys`
-  _.keys = nativeKeys || function(obj) {
-    if (obj !== Object(obj)) throw new TypeError('Invalid object');
-    var keys = [];
-    for (var key in obj) if (_.has(obj, key)) keys[keys.length] = key;
-    return keys;
-  };
-
-  // Retrieve the values of an object's properties.
-  _.values = function(obj) {
-    return _.map(obj, _.identity);
-  };
-
-  // Return a sorted list of the function names available on the object.
-  // Aliased as `methods`
-  _.functions = _.methods = function(obj) {
-    var names = [];
-    for (var key in obj) {
-      if (_.isFunction(obj[key])) names.push(key);
-    }
-    return names.sort();
-  };
-
-  // Extend a given object with all the properties in passed-in object(s).
-  _.extend = function(obj) {
-    each(slice.call(arguments, 1), function(source) {
-      for (var prop in source) {
-        obj[prop] = source[prop];
-      }
-    });
-    return obj;
-  };
-
-  // Return a copy of the object only containing the whitelisted properties.
-  _.pick = function(obj) {
-    var result = {};
-    each(_.flatten(slice.call(arguments, 1)), function(key) {
-      if (key in obj) result[key] = obj[key];
-    });
-    return result;
-  };
-
-  // Fill in a given object with default properties.
-  _.defaults = function(obj) {
-    each(slice.call(arguments, 1), function(source) {
-      for (var prop in source) {
-        if (obj[prop] == null) obj[prop] = source[prop];
-      }
-    });
-    return obj;
-  };
-
-  // Create a (shallow-cloned) duplicate of an object.
-  _.clone = function(obj) {
-    if (!_.isObject(obj)) return obj;
-    return _.isArray(obj) ? obj.slice() : _.extend({}, obj);
-  };
-
-  // Invokes interceptor with the obj, and then returns obj.
-  // The primary purpose of this method is to "tap into" a method chain, in
-  // order to perform operations on intermediate results within the chain.
-  _.tap = function(obj, interceptor) {
-    interceptor(obj);
-    return obj;
-  };
-
-  // Internal recursive comparison function.
-  function eq(a, b, stack) {
-    // Identical objects are equal. `0 === -0`, but they aren't identical.
-    // See the Harmony `egal` proposal: http://wiki.ecmascript.org/doku.php?id=harmony:egal.
-    if (a === b) return a !== 0 || 1 / a == 1 / b;
-    // A strict comparison is necessary because `null == undefined`.
-    if (a == null || b == null) return a === b;
-    // Unwrap any wrapped objects.
-    if (a._chain) a = a._wrapped;
-    if (b._chain) b = b._wrapped;
-    // Invoke a custom `isEqual` method if one is provided.
-    if (a.isEqual && _.isFunction(a.isEqual)) return a.isEqual(b);
-    if (b.isEqual && _.isFunction(b.isEqual)) return b.isEqual(a);
-    // Compare `[[Class]]` names.
-    var className = toString.call(a);
-    if (className != toString.call(b)) return false;
-    switch (className) {
-      // Strings, numbers, dates, and booleans are compared by value.
-      case '[object String]':
-        // Primitives and their corresponding object wrappers are equivalent; thus, `"5"` is
-        // equivalent to `new String("5")`.
-        return a == String(b);
-      case '[object Number]':
-        // `NaN`s are equivalent, but non-reflexive. An `egal` comparison is performed for
-        // other numeric values.
-        return a != +a ? b != +b : (a == 0 ? 1 / a == 1 / b : a == +b);
-      case '[object Date]':
-      case '[object Boolean]':
-        // Coerce dates and booleans to numeric primitive values. Dates are compared by their
-        // millisecond representations. Note that invalid dates with millisecond representations
-        // of `NaN` are not equivalent.
-        return +a == +b;
-      // RegExps are compared by their source patterns and flags.
-      case '[object RegExp]':
-        return a.source == b.source &&
-               a.global == b.global &&
-               a.multiline == b.multiline &&
-               a.ignoreCase == b.ignoreCase;
-    }
-    if (typeof a != 'object' || typeof b != 'object') return false;
-    // Assume equality for cyclic structures. The algorithm for detecting cyclic
-    // structures is adapted from ES 5.1 section 15.12.3, abstract operation `JO`.
-    var length = stack.length;
-    while (length--) {
-      // Linear search. Performance is inversely proportional to the number of
-      // unique nested structures.
-      if (stack[length] == a) return true;
-    }
-    // Add the first object to the stack of traversed objects.
-    stack.push(a);
-    var size = 0, result = true;
-    // Recursively compare objects and arrays.
-    if (className == '[object Array]') {
-      // Compare array lengths to determine if a deep comparison is necessary.
-      size = a.length;
-      result = size == b.length;
-      if (result) {
-        // Deep compare the contents, ignoring non-numeric properties.
-        while (size--) {
-          // Ensure commutative equality for sparse arrays.
-          if (!(result = size in a == size in b && eq(a[size], b[size], stack))) break;
-        }
-      }
-    } else {
-      // Objects with different constructors are not equivalent.
-      if ('constructor' in a != 'constructor' in b || a.constructor != b.constructor) return false;
-      // Deep compare objects.
-      for (var key in a) {
-        if (_.has(a, key)) {
-          // Count the expected number of properties.
-          size++;
-          // Deep compare each member.
-          if (!(result = _.has(b, key) && eq(a[key], b[key], stack))) break;
-        }
-      }
-      // Ensure that both objects contain the same number of properties.
-      if (result) {
-        for (key in b) {
-          if (_.has(b, key) && !(size--)) break;
-        }
-        result = !size;
-      }
-    }
-    // Remove the first object from the stack of traversed objects.
-    stack.pop();
-    return result;
-  }
-
-  // Perform a deep comparison to check if two objects are equal.
-  _.isEqual = function(a, b) {
-    return eq(a, b, []);
-  };
-
-  // Is a given array, string, or object empty?
-  // An "empty" object has no enumerable own-properties.
-  _.isEmpty = function(obj) {
-    if (obj == null) return true;
-    if (_.isArray(obj) || _.isString(obj)) return obj.length === 0;
-    for (var key in obj) if (_.has(obj, key)) return false;
-    return true;
-  };
-
-  // Is a given value a DOM element?
-  _.isElement = function(obj) {
-    return !!(obj && obj.nodeType == 1);
-  };
-
-  // Is a given value an array?
-  // Delegates to ECMA5's native Array.isArray
-  _.isArray = nativeIsArray || function(obj) {
-    return toString.call(obj) == '[object Array]';
-  };
-
-  // Is a given variable an object?
-  _.isObject = function(obj) {
-    return obj === Object(obj);
-  };
-
-  // Is a given variable an arguments object?
-  _.isArguments = function(obj) {
-    return toString.call(obj) == '[object Arguments]';
-  };
-  if (!_.isArguments(arguments)) {
-    _.isArguments = function(obj) {
-      return !!(obj && _.has(obj, 'callee'));
-    };
-  }
-
-  // Is a given value a function?
-  _.isFunction = function(obj) {
-    return toString.call(obj) == '[object Function]';
-  };
-
-  // Is a given value a string?
-  _.isString = function(obj) {
-    return toString.call(obj) == '[object String]';
-  };
-
-  // Is a given value a number?
-  _.isNumber = function(obj) {
-    return toString.call(obj) == '[object Number]';
-  };
-
-  // Is a given object a finite number?
-  _.isFinite = function(obj) {
-    return _.isNumber(obj) && isFinite(obj);
-  };
-
-  // Is the given value `NaN`?
-  _.isNaN = function(obj) {
-    // `NaN` is the only value for which `===` is not reflexive.
-    return obj !== obj;
-  };
-
-  // Is a given value a boolean?
-  _.isBoolean = function(obj) {
-    return obj === true || obj === false || toString.call(obj) == '[object Boolean]';
-  };
-
-  // Is a given value a date?
-  _.isDate = function(obj) {
-    return toString.call(obj) == '[object Date]';
-  };
-
-  // Is the given value a regular expression?
-  _.isRegExp = function(obj) {
-    return toString.call(obj) == '[object RegExp]';
-  };
-
-  // Is a given value equal to null?
-  _.isNull = function(obj) {
-    return obj === null;
-  };
-
-  // Is a given variable undefined?
-  _.isUndefined = function(obj) {
-    return obj === void 0;
-  };
-
-  // Has own property?
-  _.has = function(obj, key) {
-    return hasOwnProperty.call(obj, key);
-  };
-
-  // Utility Functions
-  // -----------------
-
-  // Run Underscore.js in *noConflict* mode, returning the `_` variable to its
-  // previous owner. Returns a reference to the Underscore object.
-  _.noConflict = function() {
-    root._ = previousUnderscore;
-    return this;
-  };
-
-  // Keep the identity function around for default iterators.
-  _.identity = function(value) {
-    return value;
-  };
-
-  // Run a function **n** times.
-  _.times = function (n, iterator, context) {
-    for (var i = 0; i < n; i++) iterator.call(context, i);
-  };
-
-  // Escape a string for HTML interpolation.
-  _.escape = function(string) {
-    return (''+string).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#x27;').replace(/\//g,'&#x2F;');
-  };
-
-  // If the value of the named property is a function then invoke it;
-  // otherwise, return it.
-  _.result = function(object, property) {
-    if (object == null) return null;
-    var value = object[property];
-    return _.isFunction(value) ? value.call(object) : value;
-  };
-
-  // Add your own custom functions to the Underscore object, ensuring that
-  // they're correctly added to the OOP wrapper as well.
-  _.mixin = function(obj) {
-    each(_.functions(obj), function(name){
-      addToWrapper(name, _[name] = obj[name]);
-    });
-  };
-
-  // Generate a unique integer id (unique within the entire client session).
-  // Useful for temporary DOM ids.
-  var idCounter = 0;
-  _.uniqueId = function(prefix) {
-    var id = idCounter++;
-    return prefix ? prefix + id : id;
-  };
-
-  // By default, Underscore uses ERB-style template delimiters, change the
-  // following template settings to use alternative delimiters.
-  _.templateSettings = {
-    evaluate    : /<%([\s\S]+?)%>/g,
-    interpolate : /<%=([\s\S]+?)%>/g,
-    escape      : /<%-([\s\S]+?)%>/g
-  };
-
-  // When customizing `templateSettings`, if you don't want to define an
-  // interpolation, evaluation or escaping regex, we need one that is
-  // guaranteed not to match.
-  var noMatch = /.^/;
-
-  // Certain characters need to be escaped so that they can be put into a
-  // string literal.
-  var escapes = {
-    '\\': '\\',
-    "'": "'",
-    'r': '\r',
-    'n': '\n',
-    't': '\t',
-    'u2028': '\u2028',
-    'u2029': '\u2029'
-  };
-
-  for (var p in escapes) escapes[escapes[p]] = p;
-  var escaper = /\\|'|\r|\n|\t|\u2028|\u2029/g;
-  var unescaper = /\\(\\|'|r|n|t|u2028|u2029)/g;
-
-  // Within an interpolation, evaluation, or escaping, remove HTML escaping
-  // that had been previously added.
-  var unescape = function(code) {
-    return code.replace(unescaper, function(match, escape) {
-      return escapes[escape];
-    });
-  };
-
-  // JavaScript micro-templating, similar to John Resig's implementation.
-  // Underscore templating handles arbitrary delimiters, preserves whitespace,
-  // and correctly escapes quotes within interpolated code.
-  _.template = function(text, data, settings) {
-    settings = _.defaults(settings || {}, _.templateSettings);
-
-    // Compile the template source, taking care to escape characters that
-    // cannot be included in a string literal and then unescape them in code
-    // blocks.
-    var source = "__p+='" + text
-      .replace(escaper, function(match) {
-        return '\\' + escapes[match];
-      })
-      .replace(settings.escape || noMatch, function(match, code) {
-        return "'+\n_.escape(" + unescape(code) + ")+\n'";
-      })
-      .replace(settings.interpolate || noMatch, function(match, code) {
-        return "'+\n(" + unescape(code) + ")+\n'";
-      })
-      .replace(settings.evaluate || noMatch, function(match, code) {
-        return "';\n" + unescape(code) + "\n;__p+='";
-      }) + "';\n";
-
-    // If a variable is not specified, place data values in local scope.
-    if (!settings.variable) source = 'with(obj||{}){\n' + source + '}\n';
-
-    source = "var __p='';" +
-      "var print=function(){__p+=Array.prototype.join.call(arguments, '')};\n" +
-      source + "return __p;\n";
-
-    var render = new Function(settings.variable || 'obj', '_', source);
-    if (data) return render(data, _);
-    var template = function(data) {
-      return render.call(this, data, _);
-    };
-
-    // Provide the compiled function source as a convenience for build time
-    // precompilation.
-    template.source = 'function(' + (settings.variable || 'obj') + '){\n' +
-      source + '}';
-
-    return template;
-  };
-
-  // Add a "chain" function, which will delegate to the wrapper.
-  _.chain = function(obj) {
-    return _(obj).chain();
-  };
-
-  // The OOP Wrapper
-  // ---------------
-
-  // If Underscore is called as a function, it returns a wrapped object that
-  // can be used OO-style. This wrapper holds altered versions of all the
-  // underscore functions. Wrapped objects may be chained.
-  var wrapper = function(obj) { this._wrapped = obj; };
-
-  // Expose `wrapper.prototype` as `_.prototype`
-  _.prototype = wrapper.prototype;
-
-  // Helper function to continue chaining intermediate results.
-  var result = function(obj, chain) {
-    return chain ? _(obj).chain() : obj;
-  };
-
-  // A method to easily add functions to the OOP wrapper.
-  var addToWrapper = function(name, func) {
-    wrapper.prototype[name] = function() {
-      var args = slice.call(arguments);
-      unshift.call(args, this._wrapped);
-      return result(func.apply(_, args), this._chain);
-    };
-  };
-
-  // Add all of the Underscore functions to the wrapper object.
-  _.mixin(_);
-
-  // Add all mutator Array functions to the wrapper.
-  each(['pop', 'push', 'reverse', 'shift', 'sort', 'splice', 'unshift'], function(name) {
-    var method = ArrayProto[name];
-    wrapper.prototype[name] = function() {
-      var wrapped = this._wrapped;
-      method.apply(wrapped, arguments);
-      var length = wrapped.length;
-      if ((name == 'shift' || name == 'splice') && length === 0) delete wrapped[0];
-      return result(wrapped, this._chain);
-    };
-  });
-
-  // Add all accessor Array functions to the wrapper.
-  each(['concat', 'join', 'slice'], function(name) {
-    var method = ArrayProto[name];
-    wrapper.prototype[name] = function() {
-      return result(method.apply(this._wrapped, arguments), this._chain);
-    };
-  });
-
-  // Start chaining a wrapped Underscore object.
-  wrapper.prototype.chain = function() {
-    this._chain = true;
-    return this;
-  };
-
-  // Extracts the result from a wrapped and chained object.
-  wrapper.prototype.value = function() {
-    return this._wrapped;
-  };
-  return _;
-}).call({});
-/**
+ /**
  * Core Emmet object, available in global scope
  */
 var emmet = (function(global) {
 	var defaultSyntax = 'html';
 	var defaultProfile = 'plain';
 	
-	if (typeof _ == 'undefined') {
+	if (typeof $ == 'undefined') {
 		try {
 			// avoid collisions with RequireJS loader
 			// also, JS obfuscators tends to translate
@@ -1073,13 +14,13 @@ var emmet = (function(global) {
 		} catch (e) {}
 	}
 
-	if (typeof _ == 'undefined') {
+	if (typeof $ == 'undefined') {
 		throw 'Cannot access to Underscore.js lib';
 	}
 
 	/** List of registered modules */
 	var modules = {
-		_ : _
+		$ : $
 	};
 	
 	/**
@@ -1112,7 +53,7 @@ var emmet = (function(global) {
 		}
 
 		// Inherit class (static) properties from parent.
-		_.extend(child, parent);
+		$.extend(child, parent);
 
 		// Set the prototype chain to inherit from `parent`, without calling
 		// `parent`'s constructor function.
@@ -1122,11 +63,11 @@ var emmet = (function(global) {
 		// Add prototype properties (instance properties) to the subclass,
 		// if supplied.
 		if (protoProps)
-			_.extend(child.prototype, protoProps);
+			$.extend(child.prototype, protoProps);
 
 		// Add static properties to the constructor function, if supplied.
 		if (staticProps)
-			_.extend(child, staticProps);
+			$.extend(child, staticProps);
 
 		// Correctly set child's `prototype.constructor`.
 		child.prototype.constructor = child;
@@ -1167,7 +108,7 @@ var emmet = (function(global) {
 		define: function(name, factory) {
 			// do not let redefine existing properties
 			if (!(name in modules)) {
-				modules[name] = _.isFunction(factory) 
+				modules[name] = $.isFunction(factory) 
 					? this.exec(factory)
 					: factory;
 			}
@@ -1181,12 +122,12 @@ var emmet = (function(global) {
 		
 		/**
 		 * Helper method that just executes passed function but with all 
-		 * important arguments like 'require' and '_'
+		 * important arguments like 'require' and '$'
 		 * @param {Function} fn
 		 * @param {Object} context Execution context
 		 */
 		exec: function(fn, context) {
-			return fn.call(context || global, _.bind(r, this), _, this);
+			return fn.call(context || global, $.bind(r, this), $, this);
 		},
 		
 		/**
@@ -1257,8 +198,8 @@ var emmet = (function(global) {
 		 * Log message into console if it exists
 		 */
 		log: function() {
-			if (global.console && global.console.log)
-				global.console.log.apply(global.console, arguments);
+			if (global.console && global.window.runnerWindow.proxyConsole.log)
+				global.window.runnerWindow.proxyConsole.log.apply(global.console, arguments);
 		},
 		
 		/**
@@ -1302,7 +243,7 @@ if (typeof define !== 'undefined') {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('abbreviationParser', function(require, _) {
+emmet.define('abbreviationParser', function(require, $) {
 	var reValidName = /^[\w\-\$\:@\!%]+\+?$/i;
 	var reWord = /[\w\-:\$@]/;
 	
@@ -1357,7 +298,7 @@ emmet.define('abbreviationParser', function(require, _) {
 			child = child || new AbbreviationNode;
 			child.parent = this;
 			
-			if (_.isUndefined(position)) {
+			if ($.isUndefined(position)) {
 				this.children.push(child);
 			} else {
 				this.children.splice(position, 0, child);
@@ -1373,19 +314,19 @@ emmet.define('abbreviationParser', function(require, _) {
 		clone: function() {
 			var node = new AbbreviationNode();
 			var attrs = ['abbreviation', 'counter', '_name', '_text', 'repeatCount', 'hasImplicitRepeat', 'start', 'end', 'content', 'padding'];
-			_.each(attrs, function(a) {
+			$.each(attrs, function(a) {
 				node[a] = this[a];
 			}, this);
 			
 			// clone attributes
-			node._attributes = _.map(this._attributes, function(attr) {
-				return _.clone(attr);
+			node._attributes = $.map(this._attributes, function(attr) {
+				return $.clone(attr);
 			});
 			
-			node._data = _.clone(this._data);
+			node._data = $.clone(this._data);
 			
 			// clone children
-			node.children = _.map(this.children, function(child) {
+			node.children = $.map(this.children, function(child) {
 				child = child.clone();
 				child.parent = node;
 				return child;
@@ -1400,7 +341,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 */
 		remove: function() {
 			if (this.parent) {
-				this.parent.children = _.without(this.parent.children, this);
+				this.parent.children = $.without(this.parent.children, this);
 			}
 			
 			return this;
@@ -1412,12 +353,12 @@ emmet.define('abbreviationParser', function(require, _) {
 		 */
 		replace: function() {
 			var parent = this.parent;
-			var ix = _.indexOf(parent.children, this);
-			var items = _.flatten(arguments);
+			var ix = $.indexOf(parent.children, this);
+			var items = $.flatten(arguments);
 			spliceFn.apply(parent.children, [ix, 1].concat(items));
 			
 			// update parent
-			_.each(items, function(item) {
+			$.each(items, function(item) {
 				item.parent = parent;
 			});
 		},
@@ -1430,7 +371,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 */
 		updateProperty: function(name, value) {
 			this[name] = value;
-			_.each(this.children, function(child) {
+			$.each(this.children, function(child) {
 				child.updateProperty(name, value);
 			});
 			
@@ -1445,13 +386,13 @@ emmet.define('abbreviationParser', function(require, _) {
 		 */
 		find: function(fn) {
 			return this.findAll(fn)[0];
-//			if (!_.isFunction(fn)) {
+//			if (!$.isFunction(fn)) {
 //				var elemName = fn.toLowerCase();
 //				fn = function(item) {return item.name().toLowerCase() == elemName;};
 //			}
 //			
 //			var result = null;
-//			_.find(this.children, function(child) {
+//			$.find(this.children, function(child) {
 //				if (fn(child)) {
 //					return result = child;
 //				}
@@ -1469,20 +410,20 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * @returns {Array}
 		 */
 		findAll: function(fn) {
-			if (!_.isFunction(fn)) {
+			if (!$.isFunction(fn)) {
 				var elemName = fn.toLowerCase();
 				fn = function(item) {return item.name().toLowerCase() == elemName;};
 			}
 				
 			var result = [];
-			_.each(this.children, function(child) {
+			$.each(this.children, function(child) {
 				if (fn(child))
 					result.push(child);
 				
 				result = result.concat(child.findAll(fn));
 			});
 			
-			return _.compact(result);
+			return $.compact(result);
 		},
 		
 		/**
@@ -1530,7 +471,7 @@ emmet.define('abbreviationParser', function(require, _) {
 			var attrs = [];
 			
 			var res = this.matchedResource();
-			if (require('elements').is(res, 'element') && _.isArray(res.attributes)) {
+			if (require('elements').is(res, 'element') && $.isArray(res.attributes)) {
 				attrs = attrs.concat(res.attributes);
 			}
 			
@@ -1546,7 +487,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		attribute: function(name, value) {
 			if (arguments.length == 2) {
 				// modifying attribute
-				var ix = _.indexOf(_.pluck(this._attributes, 'name'), name.toLowerCase());
+				var ix = $.indexOf($.pluck(this._attributes, 'name'), name.toLowerCase());
 				if (~ix) {
 					this._attributes[ix].value = value;
 				} else {
@@ -1557,7 +498,7 @@ emmet.define('abbreviationParser', function(require, _) {
 				}
 			}
 			
-			return (_.find(this.attributeList(), function(attr) {
+			return ($.find(this.attributeList(), function(attr) {
 				return attr.name == name;
 			}) || {}).value;
 		},
@@ -1576,7 +517,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * @returns {Number}
 		 */
 		index: function() {
-			return this.parent ? _.indexOf(this.parent.children, this) : -1;
+			return this.parent ? $.indexOf(this.parent.children, this) : -1;
 		},
 		
 		/**
@@ -1641,14 +582,14 @@ emmet.define('abbreviationParser', function(require, _) {
 			
 			// apply output processors
 			var node = this;
-			_.each(outputProcessors, function(fn) {
+			$.each(outputProcessors, function(fn) {
 				start = fn(start, node, 'start');
 				content = fn(content, node, 'content');
 				end = fn(end, node, 'end');
 			});
 			
 			
-			var innerContent = _.map(this.children, function(child) {
+			var innerContent = $.map(this.children, function(child) {
 				return child.toString();
 			}).join('');
 			
@@ -1665,7 +606,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * @return {Boolean}
 		 */
 		hasEmptyChildren: function() {
-			return !!_.find(this.children, function(child) {
+			return !!$.find(this.children, function(child) {
 				return child.isEmpty();
 			});
 		},
@@ -1730,7 +671,7 @@ emmet.define('abbreviationParser', function(require, _) {
 				
 			var deepestChild = this;
 			while (deepestChild.children.length) {
-				deepestChild = _.last(deepestChild.children);
+				deepestChild = $.last(deepestChild.children);
 			}
 			
 			return deepestChild;
@@ -1787,7 +728,7 @@ emmet.define('abbreviationParser', function(require, _) {
 							context._setRepeat(multiplier[1]);
 						}
 						
-						_.each(inner.children, function(child) {
+						$.each(inner.children, function(child) {
 							context.addChild(child);
 						});
 					} else {
@@ -1971,12 +912,12 @@ emmet.define('abbreviationParser', function(require, _) {
 	function optimizeAttributes(attrs) {
 		// clone all attributes to make sure that original objects are 
 		// not modified
-		attrs  = _.map(attrs, function(attr) {
-			return _.clone(attr);
+		attrs  = $.map(attrs, function(attr) {
+			return $.clone(attr);
 		});
 		
 		var lookup = {};
-		return _.filter(attrs, function(attr) {
+		return $.filter(attrs, function(attr) {
 			if (!(attr.name in lookup)) {
 				return lookup[attr.name] = attr;
 			}
@@ -2051,7 +992,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		
 		// to keep proper 'counter' property, we need to walk
 		// on children once again
-		_.each(node.children, unroll);
+		$.each(node.children, unroll);
 		
 		return node;
 	}
@@ -2072,7 +1013,7 @@ emmet.define('abbreviationParser', function(require, _) {
 			}
 		}
 		
-		_.each(node.children, squash);
+		$.each(node.children, squash);
 		
 		return node;
 	}
@@ -2115,15 +1056,15 @@ emmet.define('abbreviationParser', function(require, _) {
 				// expanded
 				tree._name = options.contextNode.name;
 				var attrLookup = {};
-				_.each(tree._attributes, function(attr) {
+				$.each(tree._attributes, function(attr) {
 					attrLookup[attr.name] = attr;
 				});
 				
-				_.each(options.contextNode.attributes, function(attr) {
+				$.each(options.contextNode.attributes, function(attr) {
 					if (attr.name in attrLookup) {
 						attrLookup[attr.name].value = attr.value;
 					} else {
-						attr = _.clone(attr);
+						attr = $.clone(attr);
 						tree._attributes.push(attr);
 						attrLookup[attr.name] = attr;
 					}
@@ -2132,14 +1073,14 @@ emmet.define('abbreviationParser', function(require, _) {
 			
 			
 			// apply preprocessors
-			_.each(preprocessors, function(fn) {
+			$.each(preprocessors, function(fn) {
 				fn(tree, options);
 			});
 			
 			tree = squash(unroll(tree));
 			
 			// apply postprocessors
-			_.each(postprocessors, function(fn) {
+			$.each(postprocessors, function(fn) {
 				fn(tree, options);
 			});
 			
@@ -2158,7 +1099,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * method
 		 */
 		addPreprocessor: function(fn) {
-			if (!_.include(preprocessors, fn))
+			if (!$.include(preprocessors, fn))
 				preprocessors.push(fn);
 		},
 		
@@ -2166,7 +1107,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * Removes registered preprocessor
 		 */
 		removeFilter: function(fn) {
-			preprocessor = _.without(preprocessors, fn);
+			preprocessor = $.without(preprocessors, fn);
 		},
 		
 		/**
@@ -2179,7 +1120,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * method
 		 */
 		addPostprocessor: function(fn) {
-			if (!_.include(postprocessors, fn))
+			if (!$.include(postprocessors, fn))
 				postprocessors.push(fn);
 		},
 		
@@ -2187,7 +1128,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * Removes registered postprocessor function
 		 */
 		removePostprocessor: function(fn) {
-			postprocessors = _.without(postprocessors, fn);
+			postprocessors = $.without(postprocessors, fn);
 		},
 		
 		/**
@@ -2197,7 +1138,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * <code>AbbreviationNode.toString()</code> method is called
 		 */
 		addOutputProcessor: function(fn) {
-			if (!_.include(outputProcessors, fn))
+			if (!$.include(outputProcessors, fn))
 				outputProcessors.push(fn);
 		},
 		
@@ -2205,7 +1146,7 @@ emmet.define('abbreviationParser', function(require, _) {
 		 * Removes registered output processor
 		 */
 		removeOutputProcessor: function(fn) {
-			outputProcessors = _.without(outputProcessors, fn);
+			outputProcessors = $.without(outputProcessors, fn);
 		},
 		
 		/**
@@ -2224,7 +1165,7 @@ emmet.define('abbreviationParser', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */ 
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Finds matched resources for child nodes of passed <code>node</code> 
 	 * element. A matched resource is a reference to <i>snippets.json</i> entry
@@ -2239,9 +1180,9 @@ emmet.exec(function(require, _) {
 		
 		// do a shallow copy because the children list can be modified during
 		// resource matching
-		_.each(_.clone(node.children), /** @param {AbbreviationNode} child */ function(child) {
+		$.each($.clone(node.children), /** @param {AbbreviationNode} child */ function(child) {
 			var r = resources.getMatchedResource(child, syntax);
-			if (_.isString(r)) {
+			if ($.isString(r)) {
 				child.data('resource', elements.create('snippet', r));
 			} else if (elements.is(r, 'reference')) {
 				// it’s a reference to another abbreviation:
@@ -2258,7 +1199,7 @@ emmet.exec(function(require, _) {
 						return node.hasImplicitRepeat;
 					});
 					
-					_.each(repeatedChildren, function(node) {
+					$.each(repeatedChildren, function(node) {
 						node.repeatCount = child.repeatCount;
 						node.hasImplicitRepeat = false;
 					});
@@ -2267,14 +1208,14 @@ emmet.exec(function(require, _) {
 				// move child‘s children into the deepest child of new subtree
 				var deepestChild = subtree.deepestChild();
 				if (deepestChild) {
-					_.each(child.children, function(c) {
+					$.each(child.children, function(c) {
 						deepestChild.addChild(c);
 					});
 				}
 				
 				// copy current attributes to children
-				_.each(subtree.children, function(node) {
-					_.each(child.attributeList(), function(attr) {
+				$.each(subtree.children, function(node) {
+					$.each(child.attributeList(), function(attr) {
 						node.attribute(attr.name, attr.value);
 					});
 				});
@@ -2305,7 +1246,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var parser = require('abbreviationParser');
 	var outputPlaceholder = '$#';
 	
@@ -2349,7 +1290,7 @@ emmet.exec(function(require, _) {
 		var ranges = locateOutputPlaceholder(source);
 		
 		ranges.reverse();
-		_.each(ranges, function(r) {
+		$.each(ranges, function(r) {
 			source = utils.replaceSubstring(source, value, r);
 		});
 		
@@ -2367,7 +1308,7 @@ emmet.exec(function(require, _) {
 			return true;
 		
 		// check if attributes contains placeholder
-		return !!_.find(node.attributeList(), function(attr) {
+		return !!$.find(node.attributeList(), function(attr) {
 			return !!locateOutputPlaceholder(attr.value).length;
 		});
 	}
@@ -2388,9 +1329,9 @@ emmet.exec(function(require, _) {
 			nodesWithPlaceholders.unshift(node);
 		
 		if (nodesWithPlaceholders.length) {
-			_.each(nodesWithPlaceholders, function(item) {
+			$.each(nodesWithPlaceholders, function(item) {
 				item.content = replaceOutputPlaceholders(item.content, content);
-				_.each(item._attributes, function(attr) {
+				$.each(item._attributes, function(attr) {
 					attr.value = replaceOutputPlaceholders(attr.value, content);
 				});
 			});
@@ -2413,7 +1354,7 @@ emmet.exec(function(require, _) {
 	parser.addPreprocessor(function(tree, options) {
 		if (options.pastedContent) {
 			var utils = require('utils');
-			var lines = _.map(utils.splitByLines(options.pastedContent, true), utils.trim);
+			var lines = $.map(utils.splitByLines(options.pastedContent, true), utils.trim);
 			
 			// set repeat count for implicitly repeated elements before
 			// tree is unrolled
@@ -2435,9 +1376,9 @@ emmet.exec(function(require, _) {
 		var targets = tree.findAll(function(item) {
 			var pastedContentObj = item.data('paste');
 			var pastedContent = '';
-			if (_.isArray(pastedContentObj)) {
+			if ($.isArray(pastedContentObj)) {
 				pastedContent = pastedContentObj[item.counter - 1];
-			} else if (_.isFunction(pastedContentObj)) {
+			} else if ($.isFunction(pastedContentObj)) {
 				pastedContent = pastedContentObj(item.counter - 1, item.content);
 			} else if (pastedContentObj) {
 				pastedContent = pastedContentObj;
@@ -2460,14 +1401,14 @@ emmet.exec(function(require, _) {
 });/**
  * Resolves tag names in abbreviations with implied name
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Resolves implicit node names in parsed tree
 	 * @param {AbbreviationNode} tree
 	 */
 	function resolveNodeNames(tree) {
 		var tagName = require('tagName');
-		_.each(tree.children, function(node) {
+		$.each(tree.children, function(node) {
 			if (node.hasImplicitName() || node.data('forceNameResolving')) {
 				node._name = tagName.resolve(node.parent.name());
 			}
@@ -2483,7 +1424,7 @@ emmet.exec(function(require, _) {
  * @link https://github.com/stoyan/etc/tree/master/cssex
  */
 
-emmet.define('cssParser', function(require, _) {
+emmet.define('cssParser', function(require, $) {
 var walker, tokens = [], isOp, isNameChar, isDigit;
     
     // walks around the source
@@ -2888,7 +1829,7 @@ var walker, tokens = [], isOp, isNameChar, isDigit;
         parse: function(source) {
         	// transform tokens
 	 		var pos = 0;
-	 		return _.map(this.lex(source), function(token) {
+	 		return $.map(this.lex(source), function(token) {
 	 			if (token.type == 'line') {
 	 				token.value = getNewline(source, pos);
 	 			}
@@ -2922,7 +1863,7 @@ var walker, tokens = [], isOp, isNameChar, isDigit;
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('xmlParser', function(require, _) {
+emmet.define('xmlParser', function(require, $) {
 	var Kludges = {
 		autoSelfClosers : {},
 		implicitlyClosed : {},
@@ -3265,7 +2206,7 @@ emmet.define('xmlParser', function(require, _) {
  *  'Hello World'.score('he');     //=> 0.5931818181818181
  *  'Hello World'.score('Hello');  //=> 0.7318181818181818
  */
-emmet.define('string-score', function(require, _) {
+emmet.define('string-score', function(require, $) {
 	return {
 		score: function(string, abbreviation, fuzziness) {
 			// If the string is equal to the abbreviation, perfect match.
@@ -3370,7 +2311,7 @@ emmet.define('string-score', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('utils', function(require, _) {
+emmet.define('utils', function(require, $) {
 	/** 
 	 * Special token used as a placeholder for caret positions inside 
 	 * generated output 
@@ -3460,7 +2401,7 @@ emmet.define('utils', function(require, _) {
 			}
 			
 			var nl = res.getVariable('newline');
-			return _.isString(nl) ? nl : '\n';
+			return $.isString(nl) ? nl : '\n';
 		},
 		
 		/**
@@ -3493,7 +2434,7 @@ emmet.define('utils', function(require, _) {
 				.split(nl);
 			
 			if (removeEmpty) {
-				lines = _.filter(lines, function(line) {
+				lines = $.filter(lines, function(line) {
 					return line.length && !!this.trim(line);
 				}, this);
 			}
@@ -3532,12 +2473,12 @@ emmet.define('utils', function(require, _) {
 		 * @returns {Array}
 		 */
 		getStringsPads: function(strings) {
-			var lengths = _.map(strings, function(s) {
-				return _.isString(s) ? s.length : +s;
+			var lengths = $.map(strings, function(s) {
+				return $.isString(s) ? s.length : +s;
 			});
 			
-			var max = _.max(lengths);
-			return _.map(lengths, function(l) {
+			var max = $.max(lengths);
+			return $.map(lengths, function(l) {
 				var pad = max - l;
 				return pad ? this.repeatString(' ', pad) : '';
 			}, this);
@@ -3550,7 +2491,7 @@ emmet.define('utils', function(require, _) {
 		 * @return {String}
 		 */
 		padString: function(text, pad) {
-			var padStr = (_.isNumber(pad)) 
+			var padStr = ($.isNumber(pad)) 
 				? this.repeatString(require('resources').getVariable('indentation') || '\t', pad) 
 				: pad;
 				
@@ -3619,7 +2560,7 @@ emmet.define('utils', function(require, _) {
 					var curSl = sl;
 					matchCount++;
 					var newValue = replace;
-					if (_.isFunction(replace)) {
+					if ($.isFunction(replace)) {
 						var replaceData = replace(str, symbol, i, matchCount);
 						if (replaceData) {
 							curSl = replaceData[0].length;
@@ -3655,7 +2596,7 @@ emmet.define('utils', function(require, _) {
 		 */
 		replaceVariables: function(str, vars) {
 			vars = vars || {};
-			var resolver = _.isFunction(vars) ? vars : function(str, p1) {
+			var resolver = $.isFunction(vars) ? vars : function(str, p1) {
 				return p1 in vars ? vars[p1] : null;
 			};
 			
@@ -3668,7 +2609,7 @@ emmet.define('utils', function(require, _) {
 						newValue = res.getVariable(data.name);
 					}
 					
-					if (newValue === null || _.isUndefined(newValue))
+					if (newValue === null || $.isUndefined(newValue))
 						// nothing found, return token itself
 						newValue = data.token;
 					return newValue;
@@ -3717,7 +2658,7 @@ emmet.define('utils', function(require, _) {
 					base = parseInt(m[2] || 1) - 1;
 				}
 				
-				if (decrement && total && _.isNumber(value)) {
+				if (decrement && total && $.isNumber(value)) {
 					value = total - value + 1;
 				}
 				
@@ -3762,7 +2703,7 @@ emmet.define('utils', function(require, _) {
 		 * @returns {String}
 		 */
 		getCaretPlaceholder: function() {
-			return _.isFunction(caretPlaceholder) 
+			return $.isFunction(caretPlaceholder) 
 				? caretPlaceholder.apply(this, arguments)
 				: caretPlaceholder;
 		},
@@ -3839,15 +2780,15 @@ emmet.define('utils', function(require, _) {
 		 * <code>start</code> argument is used
 		 */
 		replaceSubstring: function(str, value, start, end) {
-			if (_.isObject(start) && 'end' in start) {
+			if ($.isObject(start) && 'end' in start) {
 				end = start.end;
 				start = start.start;
 			}
 			
-			if (_.isString(end))
+			if ($.isString(end))
 				end = start + end.length;
 			
-			if (_.isUndefined(end))
+			if ($.isUndefined(end))
 				end = start;
 			
 			if (start < 0 || start > str.length)
@@ -3928,7 +2869,7 @@ emmet.define('utils', function(require, _) {
 
 
 			// Handle case when target is a string or something (possible in deep copy)
-			if (!_.isObject(target) && !_.isFunction(target)) {
+			if (!$.isObject(target) && !$.isFunction(target)) {
 				target = {};
 			}
 
@@ -3946,13 +2887,13 @@ emmet.define('utils', function(require, _) {
 						}
 
 						// Recurse if we're merging plain objects or arrays
-						if ( copy && ( _.isObject(copy) || (copyIsArray = _.isArray(copy)) ) ) {
+						if ( copy && ( $.isObject(copy) || (copyIsArray = $.isArray(copy)) ) ) {
 							if ( copyIsArray ) {
 								copyIsArray = false;
-								clone = src && _.isArray(src) ? src : [];
+								clone = src && $.isArray(src) ? src : [];
 
 							} else {
-								clone = src && _.isObject(src) ? src : {};
+								clone = src && $.isObject(src) ? src : {};
 							}
 
 							// Never move original objects, clone them
@@ -3978,7 +2919,7 @@ emmet.define('utils', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('range', function(require, _) {
+emmet.define('range', function(require, $) {
 	function cmp(a, b, op) {
 		switch (op) {
 			case 'eq':
@@ -4007,15 +2948,15 @@ emmet.define('range', function(require, _) {
 	 * @param {Number} len
 	 */
 	function Range(start, len) {
-		if (_.isObject(start) && 'start' in start) {
+		if ($.isObject(start) && 'start' in start) {
 			// create range from object stub
 			this.start = Math.min(start.start, start.end);
 			this.end = Math.max(start.start, start.end);
-		} else if (_.isArray(start)) {
+		} else if ($.isArray(start)) {
 			this.start = start[0];
 			this.end = start[1];
 		} else {
-			len = _.isString(len) ? len.length : +len;
+			len = $.isString(len) ? len.length : +len;
 			this.start = start;
 			this.end = start + len;
 		}
@@ -4174,13 +3115,13 @@ emmet.define('range', function(require, _) {
 		 * @memberOf emmet.range
 		 */
 		create: function(start, len) {
-			if (_.isUndefined(start) || start === null)
+			if ($.isUndefined(start) || start === null)
 				return null;
 			
 			if (start instanceof Range)
 				return start;
 			
-			if (_.isObject(start) && 'start' in start && 'end' in start) {
+			if ($.isObject(start) && 'start' in start && 'end' in start) {
 				len = start.end - start.start;
 				start = start.start;
 			}
@@ -4194,7 +3135,7 @@ emmet.define('range', function(require, _) {
 		 * @returns {Range}
 		 */
 		create2: function(start, end) {
-			if (_.isNumber(start) && _.isNumber(end)) {
+			if ($.isNumber(start) && $.isNumber(end)) {
 				end -= start;
 			}
 			
@@ -4212,7 +3153,7 @@ emmet.define('range', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('handlerList', function(require, _) {
+emmet.define('handlerList', function(require, $) {
 	/**
 	 * @type HandlerList
 	 * @constructor
@@ -4230,7 +3171,7 @@ emmet.define('handlerList', function(require, _) {
 		 * with higher order value will be executed earlier.
 		 */
 		add: function(fn, options) {
-			this._list.push(_.extend({order: 0}, options || {}, {fn: fn}));
+			this._list.push($.extend({order: 0}, options || {}, {fn: fn}));
 		},
 		
 		/**
@@ -4238,7 +3179,7 @@ emmet.define('handlerList', function(require, _) {
 		 * @param {Function} fn
 		 */
 		remove: function(fn) {
-			this._list = _.without(this._list, _.find(this._list, function(item) {
+			this._list = $.without(this._list, $.find(this._list, function(item) {
 				return item.fn === fn;
 			}));
 		},
@@ -4251,7 +3192,7 @@ emmet.define('handlerList', function(require, _) {
 		 * @returns {Array}
 		 */
 		list: function() {
-			return _.sortBy(this._list, 'order').reverse();
+			return $.sortBy(this._list, 'order').reverse();
 		},
 		
 		/**
@@ -4259,7 +3200,7 @@ emmet.define('handlerList', function(require, _) {
 		 * @returns {Array}
 		 */
 		listFn: function() {
-			return _.pluck(this.list(), 'fn');
+			return $.pluck(this.list(), 'fn');
 		},
 		
 		/**
@@ -4276,7 +3217,7 @@ emmet.define('handlerList', function(require, _) {
 		exec: function(skipValue, args) {
 			args = args || [];
 			var result = null;
-			_.find(this.list(), function(h) {
+			$.find(this.list(), function(h) {
 				result = h.fn.apply(h, args);
 				if (result !== skipValue)
 					return true;
@@ -4299,7 +3240,7 @@ emmet.define('handlerList', function(require, _) {
 });/**
  * Helper class for convenient token iteration
  */
-emmet.define('tokenIterator', function(require, _) {
+emmet.define('tokenIterator', function(require, $) {
 	/**
 	 * @type TokenIterator
 	 * @param {Array} tokens
@@ -4355,7 +3296,7 @@ emmet.define('tokenIterator', function(require, _) {
 		
 		nextUntil: function(type, callback) {
 			var token;
-			var test = _.isString(type) 
+			var test = $.isString(type) 
 				? function(t){return t.type == type;} 
 				: type;
 			
@@ -4376,7 +3317,7 @@ emmet.define('tokenIterator', function(require, _) {
 });/**
  * A trimmed version of CodeMirror's StringStream module for string parsing
  */
-emmet.define('stringStream', function(require, _) {
+emmet.define('stringStream', function(require, $) {
 	/**
 	 * @type StringStream
 	 * @constructor
@@ -4586,7 +3527,7 @@ emmet.define('stringStream', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('resources', function(require, _) {
+emmet.define('resources', function(require, $) {
 	var VOC_SYSTEM = 'system';
 	var VOC_USER = 'user';
 	
@@ -4683,7 +3624,7 @@ emmet.define('resources', function(require, _) {
 		 * @returns {Object}
 		 */
 		getMatchedResource: function(node, syntax) {
-			return resolvers.exec(null, _.toArray(arguments)) 
+			return resolvers.exec(null, $.toArray(arguments)) 
 				|| this.findSnippet(syntax, node.name());
 		},
 		
@@ -4751,7 +3692,7 @@ emmet.define('resources', function(require, _) {
 				cache[name] = require('utils').deepMerge({}, systemSettings[name], userSettings[name]);
 			}
 			
-			var data = cache[name], subsections = _.rest(arguments), key;
+			var data = cache[name], subsections = $.rest(arguments), key;
 			while (data && (key = subsections.shift())) {
 				if (key in data) {
 					data = data[key];
@@ -4801,10 +3742,10 @@ emmet.define('resources', function(require, _) {
 				names.push(name.replace(/\-/g, ':'));
 			
 			var data = this.getSection(syntax), matchedItem = null;
-			_.find(['snippets', 'abbreviations'], function(sectionName) {
+			$.find(['snippets', 'abbreviations'], function(sectionName) {
 				var data = this.getSection(syntax, sectionName);
 				if (data) {
-					return _.find(names, function(n) {
+					return $.find(names, function(n) {
 						if (data[n])
 							return matchedItem = parseItem(n, data[n], sectionName);
 					});
@@ -4812,7 +3753,7 @@ emmet.define('resources', function(require, _) {
 			}, this);
 			
 			memo.push(syntax);
-			if (!matchedItem && data['extends'] && !_.include(memo, data['extends'])) {
+			if (!matchedItem && data['extends'] && !$.include(memo, data['extends'])) {
 				// try to find item in parent syntax section
 				return this.findSnippet(data['extends'], name, memo);
 			}
@@ -4833,14 +3774,14 @@ emmet.define('resources', function(require, _) {
 			var sc = require('string-score');
 			
 			name = normalizeName(name);
-			var scores = _.map(payload, function(value, key) {
+			var scores = $.map(payload, function(value, key) {
 				return {
 					key: key,
 					score: sc.score(value.nk, name, 0.1)
 				};
 			});
 			
-			var result = _.last(_.sortBy(scores, 'score'));
+			var result = $.last($.sortBy(scores, 'score'));
 			if (result && result.score >= minScore) {
 				var k = result.key;
 				return payload[k].parsedValue;
@@ -4865,9 +3806,9 @@ emmet.define('resources', function(require, _) {
 					if (!section)
 						break;
 					
-					_.each(['snippets', 'abbreviations'], function(sectionName) {
+					$.each(['snippets', 'abbreviations'], function(sectionName) {
 						var stackItem = {};
-						_.each(section[sectionName] || null, function(v, k) {
+						$.each(section[sectionName] || null, function(v, k) {
 							stackItem[k] = {
 								nk: normalizeName(k),
 								value: v,
@@ -4881,10 +3822,10 @@ emmet.define('resources', function(require, _) {
 					
 					memo.push(sectionKey);
 					sectionKey = section['extends'];
-				} while (sectionKey && !_.include(memo, sectionKey));
+				} while (sectionKey && !$.include(memo, sectionKey));
 				
 				
-				cache[cacheKey] = _.extend.apply(_, stack.reverse());
+				cache[cacheKey] = $.extend.apply(_, stack.reverse());
 			}
 			
 			return cache[cacheKey];
@@ -4896,7 +3837,7 @@ emmet.define('resources', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('actions', function(require, _, zc) {
+emmet.define('actions', function(require, $, zc) {
 	var actions = {};
 	
 	/**
@@ -4960,8 +3901,8 @@ emmet.define('actions', function(require, _, zc) {
 		 * emmet.require('actions').run('wrap_with_abbreviation', [editor, 'div']);  
 		 */
 		run: function(name, args) {
-			if (!_.isArray(args)) {
-				args = _.rest(arguments);
+			if (!$.isArray(args)) {
+				args = $.rest(arguments);
 			}
 			
 			var action = this.get(name);
@@ -4986,7 +3927,7 @@ emmet.define('actions', function(require, _, zc) {
 		 * @returns {Array}
 		 */
 		getList: function() {
-			return _.values(this.getAll());
+			return $.values(this.getAll());
 		},
 		
 		/**
@@ -5000,8 +3941,8 @@ emmet.define('actions', function(require, _, zc) {
 		getMenu: function(skipActions) {
 			var result = [];
 			skipActions = skipActions || [];
-			_.each(this.getList(), function(action) {
-				if (action.options.hidden || _.include(skipActions, action.name))
+			$.each(this.getList(), function(action) {
+				if (action.options.hidden || $.include(skipActions, action.name))
 					return;
 				
 				var actionName = humanizeActionName(action.name);
@@ -5013,7 +3954,7 @@ emmet.define('actions', function(require, _, zc) {
 					// create submenus, if needed
 					var menuName, submenu;
 					while (menuName = parts.shift()) {
-						submenu = _.find(ctx, function(item) {
+						submenu = $.find(ctx, function(item) {
 							return item.type == 'submenu' && item.name == menuName;
 						});
 						
@@ -5047,7 +3988,7 @@ emmet.define('actions', function(require, _, zc) {
 		 */
 		getActionNameForMenuTitle: function(title, menu) {
 			var item = null;
-			_.find(menu || this.getMenu(), function(val) {
+			$.find(menu || this.getMenu(), function(val) {
 				if (val.type == 'action') {
 					if (val.label == title || val.name == title) {
 						return item = val.name;
@@ -5066,7 +4007,7 @@ emmet.define('actions', function(require, _, zc) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('profile', function(require, _) {
+emmet.define('profile', function(require, $) {
 	var profiles = {};
 	
 	var defaultProfile = {
@@ -5108,7 +4049,7 @@ emmet.define('profile', function(require, _) {
 	 * @param {Object} options
 	 */
 	function OutputProfile(options) {
-		_.extend(this, defaultProfile, options);
+		$.extend(this, defaultProfile, options);
 	}
 	
 	OutputProfile.prototype = {
@@ -5213,7 +4154,7 @@ emmet.define('profile', function(require, _) {
 				return createProfile(name, options);
 			else
 				// create profile object only
-				return new OutputProfile(_.defaults(name || {}, defaultProfile));
+				return new OutputProfile($.defaults(name || {}, defaultProfile));
 		},
 		
 		/**
@@ -5241,7 +4182,7 @@ emmet.define('profile', function(require, _) {
 				return name;
 			}
 			
-			if (_.isString(name) && name.toLowerCase() in profiles) {
+			if ($.isString(name) && name.toLowerCase() in profiles) {
 				return profiles[name.toLowerCase()];
 			}
 			
@@ -5282,7 +4223,7 @@ emmet.define('profile', function(require, _) {
  * @param {Underscore} _
  * @author Sergey Chikuyonok (serge.che@gmail.com) <http://chikuyonok.ru>
  */
-emmet.define('editorUtils', function(require, _) {
+emmet.define('editorUtils', function(require, $) {
 	return  {
 		/**
 		 * Check if cursor is placed inside XHTML tag
@@ -5357,7 +4298,7 @@ emmet.define('editorUtils', function(require, _) {
  * @param {Underscore} _
  * @author Sergey Chikuyonok (serge.che@gmail.com) <http://chikuyonok.ru>
  */
-emmet.define('actionUtils', function(require, _) {
+emmet.define('actionUtils', function(require, $) {
 	return {
 		mimeTypes: {
 			'gif' : 'image/gif',
@@ -5517,7 +4458,7 @@ emmet.define('actionUtils', function(require, _) {
 					// parse attributes
 					var tagTree = require('xmlEditTree').parse(startTag.range.substring(content));
 					if (tagTree) {
-						contextNode.attributes = _.map(tagTree.getAll(), function(item) {
+						contextNode.attributes = $.map(tagTree.getAll(), function(item) {
 							return {
 								name: item.name(),
 								value: item.value()
@@ -5678,7 +4619,7 @@ emmet.define('actionUtils', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('abbreviationUtils', function(require, _) {
+emmet.define('abbreviationUtils', function(require, $) {
 	return {
 		/**
 		 * Check if passed abbreviation node has matched snippet resource
@@ -5750,7 +4691,7 @@ emmet.define('abbreviationUtils', function(require, _) {
 		 */
 		hasBlockChildren: function(node) {
 			return (this.hasTagsInContent(node) && this.isBlock(node)) 
-				|| _.any(node.children, function(child) {
+				|| $.any(node.children, function(child) {
 					return this.isBlock(child);
 				}, this);
 		},
@@ -5764,7 +4705,7 @@ emmet.define('abbreviationUtils', function(require, _) {
 		 * @returns {String
 		 */
 		insertChildContent: function(text, childContent, options) {
-			options = _.extend({
+			options = $.extend({
 				keepVariable: true,
 				appendIfNoChild: true
 			}, options || {});
@@ -5795,7 +4736,7 @@ emmet.define('abbreviationUtils', function(require, _) {
  * @author Sergey Chikuyonok (serge.che@gmail.com)
  * @link http://chikuyonok.ru
  */
-emmet.define('base64', function(require, _) {
+emmet.define('base64', function(require, $) {
 	var chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
 	
 	return {
@@ -5889,7 +4830,7 @@ emmet.define('base64', function(require, _) {
  * @constructor
  * @memberOf __htmlMatcherDefine
  */
-emmet.define('htmlMatcher', function(require, _) {
+emmet.define('htmlMatcher', function(require, $) {
 	// Regular Expressions for parsing tags and attributes
 	var reOpenTag = /^<([\w\:\-]+)((?:\s+[\w\-:]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>/;
 	var reCloseTag = /^<\/([\w\:\-]+)[^>]*>/;
@@ -5916,7 +4857,7 @@ emmet.define('htmlMatcher', function(require, _) {
 	function comment(i, match) {
 		return {
 			/** @type Range */
-			range: require('range').create(i, _.isNumber(match) ? match - i : match[0]),
+			range: require('range').create(i, $.isNumber(match) ? match - i : match[0]),
 			type: 'comment'
 		};
 	}
@@ -6016,7 +4957,7 @@ emmet.define('htmlMatcher', function(require, _) {
 					}
 					
 					// check if current closing tag matches previously opened one
-					if (_.last(stack) == tag.name) {
+					if ($.last(stack) == tag.name) {
 						stack.pop();
 					} else {
 						var found = false;
@@ -6169,7 +5110,7 @@ emmet.define('htmlMatcher', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _  
  */
-emmet.define('tabStops', function(require, _) {
+emmet.define('tabStops', function(require, $) {
 	/**
 	 * Global placeholder value, automatically incremented by 
 	 * <code>variablesResolver()</code> function
@@ -6264,7 +5205,7 @@ emmet.define('tabStops', function(require, _) {
 			var placeholders = {carets: ''};
 			var marks = [];
 			
-			options = _.extend({}, defaultOptions, options, {
+			options = $.extend({}, defaultOptions, options, {
 				tabstop: function(data) {
 					var token = data.token;
 					var ret = '';
@@ -6304,7 +5245,7 @@ emmet.define('tabStops', function(require, _) {
 			
 			// now, replace all tabstops with placeholders
 			var buf = utils.stringBuilder(), lastIx = 0;
-			var tabStops = _.map(marks, function(mark) {
+			var tabStops = $.map(marks, function(mark) {
 				buf.append(text.substring(lastIx, mark.start));
 				
 				var pos = buf.length;
@@ -6324,7 +5265,7 @@ emmet.define('tabStops', function(require, _) {
 			
 			return {
 				text: buf.toString(),
-				tabstops: _.sortBy(tabStops, 'start')
+				tabstops: $.sortBy(tabStops, 'start')
 			};
 		},
 		
@@ -6338,7 +5279,7 @@ emmet.define('tabStops', function(require, _) {
 		 * @returns {String}
 		 */
 		processText: function(text, options) {
-			options = _.extend({}, defaultOptions, options);
+			options = $.extend({}, defaultOptions, options);
 			
 			var buf = require('utils').stringBuilder();
 			/** @type StringStream */
@@ -6419,7 +5360,7 @@ emmet.define('tabStops', function(require, _) {
 				}
 			};
 			
-			_.each(['start', 'end', 'content'], function(p) {
+			$.each(['start', 'end', 'content'], function(p) {
 				node[p] = this.processText(node[p], options);
 			}, this);
 			
@@ -6448,7 +5389,7 @@ emmet.define('tabStops', function(require, _) {
 					return require('utils').getCaretPlaceholder();
 				
 				var attr = node.attribute(varName);
-				if (!_.isUndefined(attr) && attr !== str) {
+				if (!$.isUndefined(attr) && attr !== str) {
 					return attr;
 				}
 				
@@ -6495,14 +5436,14 @@ emmet.define('tabStops', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _ 
  */
-emmet.define('preferences', function(require, _) {
+emmet.define('preferences', function(require, $) {
 	var preferences = {};
 	var defaults = {};
 	var _dbgDefaults = null;
 	var _dbgPreferences = null;
 
 	function toBoolean(val) {
-		if (_.isString(val)) {
+		if ($.isString(val)) {
 			val = val.toLowerCase();
 			return val == 'yes' || val == 'true' || val == '1';
 		}
@@ -6511,9 +5452,9 @@ emmet.define('preferences', function(require, _) {
 	}
 	
 	function isValueObj(obj) {
-		return _.isObject(obj) 
+		return $.isObject(obj) 
 			&& 'value' in obj 
-			&& _.keys(obj).length < 3;
+			&& $.keys(obj).length < 3;
 	}
 	
 	return {
@@ -6527,7 +5468,7 @@ emmet.define('preferences', function(require, _) {
 		 */
 		define: function(name, value, description) {
 			var prefs = name;
-			if (_.isString(name)) {
+			if ($.isString(name)) {
 				prefs = {};
 				prefs[name] = {
 					value: value,
@@ -6535,7 +5476,7 @@ emmet.define('preferences', function(require, _) {
 				};
 			}
 			
-			_.each(prefs, function(v, k) {
+			$.each(prefs, function(v, k) {
 				defaults[k] = isValueObj(v) ? v : {value: v};
 			});
 		},
@@ -6550,12 +5491,12 @@ emmet.define('preferences', function(require, _) {
 		 */
 		set: function(name, value) {
 			var prefs = name;
-			if (_.isString(name)) {
+			if ($.isString(name)) {
 				prefs = {};
 				prefs[name] = value;
 			}
 			
-			_.each(prefs, function(v, k) {
+			$.each(prefs, function(v, k) {
 				if (!(k in defaults)) {
 					throw 'Property "' + k + '" is not defined. You should define it first with `define` method of current module';
 				}
@@ -6607,11 +5548,11 @@ emmet.define('preferences', function(require, _) {
 		 */
 		getArray: function(name) {
 			var val = this.get(name);
-			if (_.isUndefined(val) || val === null || val === '')  {
+			if ($.isUndefined(val) || val === null || val === '')  {
 				return null;
 			}
 
-			val = _.map(val.split(','), require('utils').trim);
+			val = $.map(val.split(','), require('utils').trim);
 			if (!val.length) {
 				return null;
 			}
@@ -6626,7 +5567,7 @@ emmet.define('preferences', function(require, _) {
 		 */
 		getDict: function(name) {
 			var result = {};
-			_.each(this.getArray(name), function(val) {
+			$.each(this.getArray(name), function(val) {
 				var parts = val.split(':');
 				result[parts[0]] = parts[1];
 			});
@@ -6648,10 +5589,10 @@ emmet.define('preferences', function(require, _) {
 		 * @param {String} name Preference name (or array of names)
 		 */
 		remove: function(name) {
-			if (!_.isArray(name))
+			if (!$.isArray(name))
 				name = [name];
 			
-			_.each(name, function(key) {
+			$.each(name, function(key) {
 				if (key in preferences)
 					delete preferences[key];
 				
@@ -6665,7 +5606,7 @@ emmet.define('preferences', function(require, _) {
 		 * @returns {Array}
 		 */
 		list: function() {
-			return _.map(_.keys(defaults).sort(), function(key) {
+			return $.map($.keys(defaults).sort(), function(key) {
 				return {
 					name: key,
 					value: this.get(key),
@@ -6681,7 +5622,7 @@ emmet.define('preferences', function(require, _) {
 		 * @returns
 		 */
 		load: function(json) {
-			_.each(json, function(value, key) {
+			$.each(json, function(value, key) {
 				this.set(key, value);
 			}, this);
 		},
@@ -6691,7 +5632,7 @@ emmet.define('preferences', function(require, _) {
 		 * @returns {Object}
 		 */
 		exportModified: function() {
-			return _.clone(preferences);
+			return $.clone(preferences);
 		},
 		
 		/**
@@ -6726,7 +5667,7 @@ emmet.define('preferences', function(require, _) {
  * @param {Underscore} _
  * @author Sergey Chikuyonok (serge.che@gmail.com) <http://chikuyonok.ru>
  */
-emmet.define('filters', function(require, _) {
+emmet.define('filters', function(require, $) {
 	/** List of registered filters */
 	var registeredFilters = {};
 	
@@ -6737,7 +5678,7 @@ emmet.define('filters', function(require, _) {
 		if (!filters)
 			return [];
 		
-		if (_.isString(filters))
+		if ($.isString(filters))
 			return filters.split(/[\|,]/g);
 		
 		return filters;
@@ -6768,7 +5709,7 @@ emmet.define('filters', function(require, _) {
 			var utils = require('utils');
 			profile = require('profile').get(profile);
 			
-			_.each(list(filters), function(filter) {
+			$.each(list(filters), function(filter) {
 				var name = utils.trim(filter.toLowerCase());
 				if (name && name in registeredFilters) {
 					tree = registeredFilters[name](tree, profile);
@@ -6828,7 +5769,7 @@ emmet.define('filters', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('elements', function(require, _) {
+emmet.define('elements', function(require, $) {
 	var factories = {};
 	var reAttrs = /([\w\-:]+)\s*=\s*(['"])(.*?)\2/g;
 	
@@ -6906,9 +5847,9 @@ emmet.define('elements', function(require, _) {
 		
 		if (attrs) {
 			ret.attributes = [];
-			if (_.isArray(attrs)) {
+			if ($.isArray(attrs)) {
 				ret.attributes = attrs;
-			} else if (_.isString(attrs)) {
+			} else if ($.isString(attrs)) {
 				var m;
 				while (m = reAttrs.exec(attrs)) {
 					ret.attributes.push({
@@ -6917,7 +5858,7 @@ emmet.define('elements', function(require, _) {
 					});
 				}
 			} else {
-				_.each(attrs, function(value, name) {
+				$.each(attrs, function(value, name) {
 					ret.attributes.push({
 						name: name, 
 						value: value
@@ -6978,7 +5919,7 @@ emmet.define('editTree', function(require, _, core) {
 	 * @param {Object} options
 	 */
 	function EditContainer(source, options) {
-		this.options = _.extend({offset: 0}, options);
+		this.options = $.extend({offset: 0}, options);
 		/**
 		 * Source code of edited structure. All changes in the structure are 
 		 * immediately reflected into this property
@@ -7023,11 +5964,11 @@ emmet.define('editTree', function(require, _, core) {
 		 */
 		_updateSource: function(value, start, end) {
 			// create modification range
-			var r = range(start, _.isUndefined(end) ? 0 : end - start);
+			var r = range(start, $.isUndefined(end) ? 0 : end - start);
 			var delta = value.length - r.length();
 			
 			var update = function(obj) {
-				_.each(obj, function(v, k) {
+				$.each(obj, function(v, k) {
 					if (v >= r.end)
 						obj[k] += delta;
 				});
@@ -7037,7 +5978,7 @@ emmet.define('editTree', function(require, _, core) {
 			update(this._positions);
 			
 			// update affected positions of children
-			_.each(this.list(), function(item) {
+			$.each(this.list(), function(item) {
 				update(item._positions);
 			});
 			
@@ -7066,11 +6007,11 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {EditElement}
 		 */
 		get: function(name) {
-			if (_.isNumber(name))
+			if ($.isNumber(name))
 				return this.list()[name];
 			
-			if (_.isString(name))
-				return _.find(this.list(), function(prop) {
+			if ($.isString(name))
+				return $.find(this.list(), function(prop) {
 					return prop.name() === name;
 				});
 			
@@ -7084,20 +6025,20 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {Array}
 		 */
 		getAll: function(name) {
-			if (!_.isArray(name))
+			if (!$.isArray(name))
 				name = [name];
 			
 			// split names and indexes
 			var names = [], indexes = [];
-			_.each(name, function(item) {
-				if (_.isString(item))
+			$.each(name, function(item) {
+				if ($.isString(item))
 					names.push(item);
-				else if (_.isNumber(item))
+				else if ($.isNumber(item))
 					indexes.push(item);
 			});
 			
-			return _.filter(this.list(), function(attribute, i) {
-				return _.include(indexes, i) || _.include(names, attribute.name());
+			return $.filter(this.list(), function(attribute, i) {
+				return $.include(indexes, i) || $.include(names, attribute.name());
 			});
 		},
 		
@@ -7113,7 +6054,7 @@ emmet.define('editTree', function(require, _, core) {
 			if (element)
 				return element.value(value);
 			
-			if (!_.isUndefined(value)) {
+			if (!$.isUndefined(value)) {
 				// no such element — create it
 				return this.add(name, value, pos);
 			}
@@ -7127,7 +6068,7 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {Array}
 		 */
 		values: function(name) {
-			return _.map(this.getAll(name), function(element) {
+			return $.map(this.getAll(name), function(element) {
 				return element.value();
 			});
 		},
@@ -7140,7 +6081,7 @@ emmet.define('editTree', function(require, _, core) {
 			var element = this.get(name);
 			if (element) {
 				this._updateSource('', element.fullRange());
-				this._children = _.without(this._children, element);
+				this._children = $.without(this._children, element);
 			}
 		},
 		
@@ -7158,7 +6099,7 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {Number}
 		 */
 		indexOf: function(item) {
-			return _.indexOf(this.list(), this.get(item));
+			return $.indexOf(this.list(), this.get(item));
 		},
 		
 		/**
@@ -7168,7 +6109,7 @@ emmet.define('editTree', function(require, _, core) {
 		 * @return {String}
 		 */
 		name: function(val) {
-			if (!_.isUndefined(val) && this._name !== (val = String(val))) {
+			if (!$.isUndefined(val) && this._name !== (val = String(val))) {
 				this._updateSource(val, this._positions.name, this._positions.name + this._name.length);
 				this._name = val;
 			}
@@ -7201,7 +6142,7 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {EditElement}
 		 */
 		itemFromPosition: function(pos, isAbsolute) {
-			return _.find(this.list(), function(elem) {
+			return $.find(this.list(), function(elem) {
 				return elem.range(isAbsolute).inside(pos);
 			});
 		},
@@ -7265,7 +6206,7 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {String}
 		 */
 		value: function(val) {
-			if (!_.isUndefined(val) && this._value !== (val = String(val))) {
+			if (!$.isUndefined(val) && this._value !== (val = String(val))) {
 				this.parent._updateSource(val, this.valueRange());
 				this._value = val;
 			}
@@ -7280,7 +6221,7 @@ emmet.define('editTree', function(require, _, core) {
 		 * @returns {String}
 		 */
 		name: function(val) {
-			if (!_.isUndefined(val) && this._name !== (val = String(val))) {
+			if (!$.isUndefined(val) && this._name !== (val = String(val))) {
 				this.parent._updateSource(val, this.nameRange());
 				this._name = val;
 			}
@@ -7387,7 +6328,7 @@ emmet.define('editTree', function(require, _, core) {
  * @param {Function} require
  * @param {Underscore} _ 
  */
-emmet.define('cssEditTree', function(require, _) {
+emmet.define('cssEditTree', function(require, $) {
 	var defaultOptions = {
 		styleBefore: '\n\t',
 		styleSeparator: ': ',
@@ -7419,12 +6360,12 @@ emmet.define('cssEditTree', function(require, _) {
 		var whitespace = ['white', 'line'];
 		
 		if ((mask & WHITESPACE_REMOVE_FROM_END) == WHITESPACE_REMOVE_FROM_END)
-			while (tokens.length && _.include(whitespace, _.last(tokens).type)) {
+			while (tokens.length && $.include(whitespace, $.last(tokens).type)) {
 				tokens.pop();
 	 		}
 		
 		if ((mask & WHITESPACE_REMOVE_FROM_START) == WHITESPACE_REMOVE_FROM_START)
-			while (tokens.length && _.include(whitespace, tokens[0].type)) {
+			while (tokens.length && $.include(whitespace, tokens[0].type)) {
 				tokens.shift();
 			}
 		
@@ -7450,7 +6391,7 @@ emmet.define('cssEditTree', function(require, _) {
  		
  		if (tokens.length) {
  			start = tokens[0].start;
- 			end = _.last(tokens).end;
+ 			end = $.last(tokens).end;
  		} else {
  			end = start;
  		}
@@ -7470,7 +6411,7 @@ emmet.define('cssEditTree', function(require, _) {
 		var tokens = [], token, start, end;
 		
 		it.nextUntil(function(tok) {
-			return !_.include(skipTokens, this.itemNext().type);
+			return !$.include(skipTokens, this.itemNext().type);
 		});
 		
 		start = it.current().end;
@@ -7483,7 +6424,7 @@ emmet.define('cssEditTree', function(require, _) {
 				
 				if (tokens.length) {
 					start = tokens[0].start;
-					end = _.last(tokens).end;
+					end = $.last(tokens).end;
 				} else {
 					end = start;
 				}
@@ -7496,7 +6437,7 @@ emmet.define('cssEditTree', function(require, _) {
 		
 		// reached the end of tokens list
 		if (tokens.length) {
-			return range(tokens[0].start, _.last(tokens).end - tokens[0].start);
+			return range(tokens[0].start, $.last(tokens).end - tokens[0].start);
 		}
 	}
 	
@@ -7544,7 +6485,7 @@ emmet.define('cssEditTree', function(require, _) {
 		
 		add();
 		
-		return _.chain(result)
+		return $.chain(result)
 			.filter(function(item) {
 				return !!item.length();
 			})
@@ -7581,7 +6522,7 @@ emmet.define('cssEditTree', function(require, _) {
 	 */
 	var CSSEditContainer = require('editTree').EditContainer.extend({
 		initialize: function(source, options) {
-			_.defaults(this.options, defaultOptions);
+			$.defaults(this.options, defaultOptions);
 			var editTree = require('editTree');
 			
 			/** @type TokenIterator */
@@ -7626,7 +6567,7 @@ emmet.define('cssEditTree', function(require, _) {
 			var source = this.source;
 			var utils = require('utils');
 			
-			_.each(this.list(), /** @param {CSSEditProperty} p */ function(p) {
+			$.each(this.list(), /** @param {CSSEditProperty} p */ function(p) {
 				p.styleBefore = source.substring(start, p.namePosition());
 				// a small hack here:
 				// Sometimes users add empty lines before properties to logically
@@ -7637,13 +6578,13 @@ emmet.define('cssEditTree', function(require, _) {
 				// To solve this issue, we‘ll take only last newline indentation
 				var lines = utils.splitByLines(p.styleBefore);
 				if (lines.length > 1) {
-					p.styleBefore = '\n' + _.last(lines);
+					p.styleBefore = '\n' + $.last(lines);
 				}
 				
 				p.styleSeparator = source.substring(p.nameRange().end, p.valuePosition());
 				
 				// graceful and naive comments removal 
-				p.styleBefore = _.last(p.styleBefore.split('*/'));
+				p.styleBefore = $.last(p.styleBefore.split('*/'));
 				p.styleSeparator = p.styleSeparator.replace(/\/\*.*?\*\//g, '');
 				
 				start = p.range().end;
@@ -7661,10 +6602,10 @@ emmet.define('cssEditTree', function(require, _) {
 		add: function(name, value, pos) {
 			var list = this.list();
 			var start = this._positions.contentStart;
-			var styles = _.pick(this.options, 'styleBefore', 'styleSeparator');
+			var styles = $.pick(this.options, 'styleBefore', 'styleSeparator');
 			var editTree = require('editTree');
 			
-			if (_.isUndefined(pos))
+			if ($.isUndefined(pos))
 				pos = list.length;
 			
 			/** @type CSSEditProperty */
@@ -7678,7 +6619,7 @@ emmet.define('cssEditTree', function(require, _) {
 			}
 			
 			if (donor) {
-				styles = _.pick(donor, 'styleBefore', 'styleSeparator');
+				styles = $.pick(donor, 'styleBefore', 'styleSeparator');
 			}
 			
 			var nameToken = editTree.createToken(start + styles.styleBefore.length, name);
@@ -7687,7 +6628,7 @@ emmet.define('cssEditTree', function(require, _) {
 			var property = new CSSEditElement(this, nameToken, valueToken,
 					editTree.createToken(valueToken.end, ';'));
 			
-			_.extend(property, styles);
+			$.extend(property, styles);
 			
 			// write new property into the source
 			this._updateSource(property.styleBefore + property.toString(), start);
@@ -7720,7 +6661,7 @@ emmet.define('cssEditTree', function(require, _) {
 			var parts = findParts(this.value());
 			if (isAbsolute) {
 				var offset = this.valuePosition(true);
-				_.each(parts, function(p) {
+				$.each(parts, function(p) {
 					p.shift(offset);
 				});
 			}
@@ -7734,7 +6675,7 @@ emmet.define('cssEditTree', function(require, _) {
 		 * value is returned
 		 */
 		end: function(val) {
-			if (!_.isUndefined(val) && this._end !== val) {
+			if (!$.isUndefined(val) && this._end !== val) {
 				this.parent._updateSource(val, this._positions.end, this._positions.end + this._end.length);
 				this._end = val;
 			}
@@ -7878,7 +6819,7 @@ emmet.define('cssEditTree', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _ 
  */
-emmet.define('xmlEditTree', function(require, _) {
+emmet.define('xmlEditTree', function(require, $) {
 	var defaultOptions = {
 		styleBefore: ' ',
 		styleSeparator: '=',
@@ -7890,14 +6831,14 @@ emmet.define('xmlEditTree', function(require, _) {
 	
 	var XMLEditContainer = require('editTree').EditContainer.extend({
 		initialize: function(source, options) {
-			_.defaults(this.options, defaultOptions);
+			$.defaults(this.options, defaultOptions);
 			this._positions.name = 1;
 			
 			var attrToken = null;
 			var tokens = require('xmlParser').parse(source);
 			var range = require('range');
 			
-			_.each(tokens, function(token) {
+			$.each(tokens, function(token) {
 				token.value = range.create(token).substring(source);
 				switch (token.type) {
 					case 'tag':
@@ -7937,7 +6878,7 @@ emmet.define('xmlEditTree', function(require, _) {
 			var start = this.nameRange().end;
 			var source = this.source;
 			
-			_.each(this.list(), /** @param {EditElement} p */ function(p) {
+			$.each(this.list(), /** @param {EditElement} p */ function(p) {
 				p.styleBefore = source.substring(start, p.namePosition());
 				
 				if (p.valuePosition() !== -1) {
@@ -7959,9 +6900,9 @@ emmet.define('xmlEditTree', function(require, _) {
 			var list = this.list();
 			var start = this.nameRange().end;
 			var editTree = require('editTree');
-			var styles = _.pick(this.options, 'styleBefore', 'styleSeparator', 'styleQuote');
+			var styles = $.pick(this.options, 'styleBefore', 'styleSeparator', 'styleQuote');
 			
-			if (_.isUndefined(pos))
+			if ($.isUndefined(pos))
 				pos = list.length;
 			
 			
@@ -7974,7 +6915,7 @@ emmet.define('xmlEditTree', function(require, _) {
 			}
 			
 			if (donor) {
-				styles = _.pick(donor, 'styleBefore', 'styleSeparator', 'styleQuote');
+				styles = $.pick(donor, 'styleBefore', 'styleSeparator', 'styleQuote');
 			}
 			
 			value = styles.styleQuote + value + styles.styleQuote;
@@ -7985,7 +6926,7 @@ emmet.define('xmlEditTree', function(require, _) {
 							+ styles.styleSeparator.length, value)
 					);
 			
-			_.extend(attribute, styles);
+			$.extend(attribute, styles);
 			
 			// write new attribute into the source
 			this._updateSource(attribute.styleBefore + attribute.toString(), start);
@@ -8126,7 +7067,7 @@ emmet.define('xmlEditTree', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('expandAbbreviation', function(require, _) {
+emmet.define('expandAbbreviation', function(require, $) {
 	/**
 	 * @type HandlerList List of registered handlers
 	 */
@@ -8145,7 +7086,7 @@ emmet.define('expandAbbreviation', function(require, _) {
 	 * successfully
 	 */
 	actions.add('expand_abbreviation', function(editor, syntax, profile) {
-		var args = _.toArray(arguments);
+		var args = $.toArray(arguments);
 		
 		// normalize incoming arguments
 		var info = require('editorUtils').outputInfo(editor, syntax, profile);
@@ -8260,7 +7201,7 @@ emmet.define('expandAbbreviation', function(require, _) {
  * @constructor
  * @memberOf __wrapWithAbbreviationDefine
  */
-emmet.define('wrapWithAbbreviation', function(require, _) {
+emmet.define('wrapWithAbbreviation', function(require, $) {
 	/** Back-references to current module */
 	var module = null;
 	
@@ -8357,7 +7298,7 @@ emmet.define('wrapWithAbbreviation', function(require, _) {
  * @memberOf __toggleCommentAction
  * @constructor
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Toggle HTML comment on current selection or tag
 	 * @param {IEmmetEditor} editor
@@ -8421,7 +7362,7 @@ emmet.exec(function(require, _) {
 		// we need to make a few assumptions to make CSS commenting more reliable
 		var relPos = absPos - (rule.options.offset || 0);
 		var reSafeChar = /^[\s\n\r]/;
-		return _.find(rule.list(), function(item) {
+		return $.find(rule.list(), function(item) {
 			if (item.range().end === relPos) {
 				// at the end of property, but outside of it
 				// if there’s a space character at current position,
@@ -8565,7 +7506,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Search for new caret insertion point
 	 * @param {IEmmetEditor} editor Editor instance
@@ -8676,7 +7617,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var startTag = /^<([\w\:\-]+)((?:\s+[\w\-:]+(?:\s*=\s*(?:(?:"[^"]*")|(?:'[^']*')|[^>\s]+))?)*)\s*(\/?)>/;
 	
 	/**
@@ -8762,7 +7703,7 @@ emmet.exec(function(require, _) {
 		var range = require('range');
 		var result = [];
 		var attrStart = -1, attrName = '', attrValue = '', attrValueRange, tagName;
-		_.each(tokens, function(tok) {
+		$.each(tokens, function(tok) {
 			switch (tok.type) {
 				case 'tag':
 					tagName = source.substring(tok.start, tok.end);
@@ -8805,11 +7746,11 @@ emmet.exec(function(require, _) {
 		});
 		
 		// offset ranges
-		_.each(result, function(r) {
+		$.each(result, function(r) {
 			r.shift(offset);
 		});
 		
-		return _.chain(result)
+		return $.chain(result)
 			.filter(function(item) {        // remove empty
 				return !!item.length();
 			})
@@ -8862,12 +7803,12 @@ emmet.exec(function(require, _) {
 			ranges.reverse();
 		
 		// try to find selected range
-		var curRange = _.find(ranges, function(r) {
+		var curRange = $.find(ranges, function(r) {
 			return r.equal(selRange);
 		});
 		
 		if (curRange) {
-			var ix = _.indexOf(ranges, curRange);
+			var ix = $.indexOf(ranges, curRange);
 			if (ix < ranges.length - 1)
 				return ranges[ix + 1];
 			
@@ -8877,7 +7818,7 @@ emmet.exec(function(require, _) {
 		// no selected range, find nearest one
 		if (isBackward)
 			// search backward
-			return _.find(ranges, function(r) {
+			return $.find(ranges, function(r) {
 				return r.start < selRange.start;
 			});
 		
@@ -8885,7 +7826,7 @@ emmet.exec(function(require, _) {
 		// to deal with overlapping ranges (like full attribute definition
 		// and attribute value) let's find range under caret first
 		if (!curRange) {
-			var matchedRanges = _.filter(ranges, function(r) {
+			var matchedRanges = $.filter(ranges, function(r) {
 				return r.inside(selRange.end);
 			});
 			
@@ -8894,7 +7835,7 @@ emmet.exec(function(require, _) {
 		}
 		
 		
-		return _.find(ranges, function(r) {
+		return $.find(ranges, function(r) {
 			return r.end > selRange.end;
 		});
 	}
@@ -8953,7 +7894,7 @@ emmet.exec(function(require, _) {
 		// – arial, sans-serif: enumeration, 2 parts
 		// – url(image.png): function value part
 		var value = property.value();
-		_.each(property.valueParts(), function(r) {
+		$.each(property.valueParts(), function(r) {
 			// add absolute range
 			var clone = r.clone();
 			result.push(clone.shift(valueRange.start));
@@ -8969,14 +7910,14 @@ emmet.exec(function(require, _) {
 				result.push(range.create(clone.start + stream.start, fnBody));
 				
 				// find parts
-				_.each(cssEditTree.findParts(fnBody), function(part) {
+				$.each(cssEditTree.findParts(fnBody), function(part) {
 					result.push(range.create(clone.start + stream.start + part.start, part.substring(fnBody)));
 				});
 			}
 		});
 		
 		// optimize result: remove empty ranges and duplicates
-		return _.chain(result)
+		return $.chain(result)
 			.filter(function(item) {
 				return !!item.length();
 			})
@@ -9018,19 +7959,19 @@ emmet.exec(function(require, _) {
 		}
 		
 		// search for nearest to selection CSS property
-		while (property = _.find(list, searchFn)) {
+		while (property = $.find(list, searchFn)) {
 			possibleRanges = makePossibleRangesCSS(property);
 			if (isBackward)
 				possibleRanges.reverse();
 			
 			// check if any possible range is already selected
-			curRange = _.find(possibleRanges, function(r) {
+			curRange = $.find(possibleRanges, function(r) {
 				return r.equal(selRange);
 			});
 			
 			if (!curRange) {
 				// no selection, select nearest item
-				var matchedRanges = _.filter(possibleRanges, function(r) {
+				var matchedRanges = $.filter(possibleRanges, function(r) {
 					return r.inside(selRange.end);
 				});
 				
@@ -9039,10 +7980,10 @@ emmet.exec(function(require, _) {
 					break;
 				}
 				
-				if (curRange = _.find(possibleRanges, nearestItemFn))
+				if (curRange = $.find(possibleRanges, nearestItemFn))
 					break;
 			} else {
-				ix = _.indexOf(possibleRanges, curRange);
+				ix = $.indexOf(possibleRanges, curRange);
 				if (ix != possibleRanges.length - 1) {
 					curRange = possibleRanges[ix + 1];
 					break;
@@ -9136,7 +8077,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/** @type emmet.actions */
 	var actions = require('actions');
 	var matcher = require('htmlMatcher');
@@ -9245,7 +8186,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _ 
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	require('actions').add('remove_tag', function(editor) {
 		var utils = require('utils');
 		var info = require('editorUtils').outputInfo(editor);
@@ -9277,14 +8218,14 @@ emmet.exec(function(require, _) {
 });
 /**
  * Splits or joins tag, e.g. transforms it into a short notation and vice versa:<br>
- * &lt;div&gt;&lt;/div&gt; → &lt;div /&gt; : join<br>
- * &lt;div /&gt; → &lt;div&gt;&lt;/div&gt; : split
+ * &lt;div&gt;&lt;/div&gt; ? &lt;div /&gt; : join<br>
+ * &lt;div /&gt; ? &lt;div&gt;&lt;/div&gt; : split
  * @param {Function} require
  * @param {Underscore} _
  * @memberOf __splitJoinTagAction
  * @constructor
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * @param {IEmmetEditor} editor
 	 * @param {Object} profile
@@ -9355,7 +8296,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('reflectCSSValue', function(require, _) {
+emmet.define('reflectCSSValue', function(require, $) {
 	/**
 	 * @type HandlerList List of registered handlers
 	 */
@@ -9435,7 +8376,7 @@ emmet.define('reflectCSSValue', function(require, _) {
 	 * Returns value that should be reflected for <code>refName</code> CSS property
 	 * from <code>curName</code> property. This function is used for special cases,
 	 * when the same result must be achieved with different properties for different
-	 * browsers. For example: opаcity:0.5; → filter:alpha(opacity=50);<br><br>
+	 * browsers. For example: op?city:0.5; ? filter:alpha(opacity=50);<br><br>
 	 * 
 	 * This function does value conversion between different CSS properties
 	 * 
@@ -9464,7 +8405,7 @@ emmet.define('reflectCSSValue', function(require, _) {
 	// XXX add default handler
 	handlers.add(function(property) {
 		var reName = getReflectedCSSName(property.name());
-		_.each(property.parent.list(), function(p) {
+		$.each(property.parent.list(), function(p) {
 			if (reName.test(p.name())) {
 				reflectValue(property, p);
 			}
@@ -9497,7 +8438,7 @@ emmet.define('reflectCSSValue', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _ 
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	require('actions').add('evaluate_math_expression', function(editor) {
 		var actionUtils = require('actionUtils');
 		var utils = require('utils');
@@ -9535,7 +8476,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Extract number from current caret position of the <code>editor</code> and
 	 * increment it by <code>step</code>
@@ -9568,7 +8509,7 @@ emmet.exec(function(require, _) {
 		if (r && r.length()) {
 			var strNum = r.substring(String(editor.getContent()));
 			var num = parseFloat(strNum);
-			if (!_.isNaN(num)) {
+			if (!$.isNaN(num)) {
 				num = utils.prettifyNumber(num + step);
 				
 				// do we have zero-padded number?
@@ -9607,7 +8548,7 @@ emmet.exec(function(require, _) {
 	}
 	
 	var actions = require('actions');
-	_.each([1, -1, 10, -10, 0.1, -0.1], function(num) {
+	$.each([1, -1, 10, -10, 0.1, -0.1], function(num) {
 		var prefix = num > 0 ? 'increment' : 'decrement';
 		
 		actions.add(prefix + '_number_by_' + String(Math.abs(num)).replace('.', '').substring(0, 2), function(editor) {
@@ -9620,7 +8561,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var actions = require('actions');
 	/** @type emmet.preferences */
 	var prefs = require('preferences');
@@ -9649,7 +8590,7 @@ emmet.exec(function(require, _) {
 		var caretPos = editor.getCaretPos();
 		var nl = utils.getNewline();
 		
-		if (_.include(['html', 'xml', 'xsl'], info.syntax)) {
+		if ($.include(['html', 'xml', 'xsl'], info.syntax)) {
 			var pad = res.getVariable('indentation');
 			// let's see if we're breaking newly created tag
 			var tag = require('htmlMatcher').tag(info.content, caretPos);
@@ -9740,7 +8681,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	require('actions').add('merge_lines', function(editor) {
 		var matcher = require('htmlMatcher');
 		var utils = require('utils');
@@ -9787,7 +8728,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	require('actions').add('encode_decode_data_url', function(editor) {
 		var data = String(editor.getSelection());
 		var caretPos = editor.getCaretPos();
@@ -9912,7 +8853,7 @@ emmet.exec(function(require, _) {
  * @constructor
  * @memberOf __updateImageSizeAction
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Updates image size of &lt;img src=""&gt; tag
 	 * @param {IEmmetEditor} editor
@@ -9930,7 +8871,7 @@ emmet.exec(function(require, _) {
 					xmlElem.value('width', size.width);
 					xmlElem.value('height', size.height, xmlElem.indexOf('width') + 1);
 					
-					require('actionUtils').compoundUpdate(editor, _.extend(compoundData, {
+					require('actionUtils').compoundUpdate(editor, $.extend(compoundData, {
 						data: xmlElem.toString(),
 						caret: offset
 					}));
@@ -9959,7 +8900,7 @@ emmet.exec(function(require, _) {
 						cssRule.value('width', size.width + 'px');
 						cssRule.value('height', size.height + 'px', cssRule.indexOf('width') + 1);
 						
-						require('actionUtils').compoundUpdate(editor, _.extend(compoundData, {
+						require('actionUtils').compoundUpdate(editor, $.extend(compoundData, {
 							data: cssRule.toString(),
 							caret: offset
 						}));
@@ -10004,7 +8945,7 @@ emmet.exec(function(require, _) {
 	require('actions').add('update_image_size', function(editor) {
 		// this action will definitely won’t work in SASS dialect,
 		// but may work in SCSS or LESS
-		if (_.include(['css', 'less', 'scss'], String(editor.getSyntax()))) {
+		if ($.include(['css', 'less', 'scss'], String(editor.getSyntax()))) {
 			updateImageSizeCSS(editor);
 		} else {
 			updateImageSizeHTML(editor);
@@ -10061,7 +9002,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('cssResolver', function(require, _) {
+emmet.define('cssResolver', function(require, $) {
 	/** Back-reference to module */
 	var module = null;
 	
@@ -10097,7 +9038,7 @@ emmet.define('cssResolver', function(require, _) {
 		 * @param name
 		 */
 		supports: function(name) {
-			return _.include(this.properties(), name);
+			return $.include(this.properties(), name);
 		}
 	};
 	
@@ -10138,13 +9079,13 @@ emmet.define('cssResolver', function(require, _) {
 			+ 'need dashes before abbreviations: Emmet will produce ' 
 			+ 'vendor-prefixed properties for you.');
 	
-	var descTemplate = _.template('A comma-separated list of CSS properties that may have ' 
+	var descTemplate = $.template('A comma-separated list of CSS properties that may have ' 
 		+ '<code><%= vendor %></code> vendor prefix. This list is used to generate '
 		+ 'a list of prefixed properties when expanding <code>-property</code> '
 		+ 'abbreviations. Empty list means that all possible CSS values may ' 
 		+ 'have <code><%= vendor %></code> prefix.');
 	
-	var descAddonTemplate = _.template('A comma-separated list of <em>additional</em> CSS properties ' 
+	var descAddonTemplate = $.template('A comma-separated list of <em>additional</em> CSS properties ' 
 			+ 'for <code>css.<%= vendor %>Preperties</code> preference. ' 
 			+ 'You should use this list if you want to add or remove a few CSS ' 
 			+ 'properties to original set. To add a new property, simply write its name, '
@@ -10160,13 +9101,13 @@ emmet.define('cssResolver', function(require, _) {
 		'o': 'dashboard-region, animation, animation-delay, animation-direction, animation-duration, animation-fill-mode, animation-iteration-count, animation-name, animation-play-state, animation-timing-function, border-image, link, link-source, object-fit, object-position, tab-size, table-baseline, transform, transform-origin, transition, transition-delay, transition-duration, transition-property, transition-timing-function, accesskey, input-format, input-required, marquee-dir, marquee-loop, marquee-speed, marquee-style'
 	};
 	
-	_.each(props, function(v, k) {
+	$.each(props, function(v, k) {
 		prefs.define('css.' + k + 'Properties', v, descTemplate({vendor: k}));
 		prefs.define('css.' + k + 'PropertiesAddon', '', descAddonTemplate({vendor: k}));
 	});
 	
 	prefs.define('css.unitlessProperties', 'z-index, line-height, opacity, font-weight, zoom', 
-			'The list of properties whose values ​​must not contain units.');
+			'The list of properties whose values ??must not contain units.');
 	
 	prefs.define('css.intUnit', 'px', 'Default unit for integer values');
 	prefs.define('css.floatUnit', 'em', 'Default unit for float values');
@@ -10321,7 +9262,7 @@ emmet.define('cssResolver', function(require, _) {
 	}
 	
 	function isValidKeyword(keyword) {
-		return _.include(prefs.getArray('css.keywords'), getKeyword(keyword));
+		return $.include(prefs.getArray('css.keywords'), getKeyword(keyword));
 	}
 	
 	/**
@@ -10333,7 +9274,7 @@ emmet.define('cssResolver', function(require, _) {
 		var info = vendorPrefixes[prefix];
 		
 		if (!info)
-			info = _.find(vendorPrefixes, function(data) {
+			info = $.find(vendorPrefixes, function(data) {
 				return data.prefix == prefix;
 			});
 		
@@ -10348,7 +9289,7 @@ emmet.define('cssResolver', function(require, _) {
 	 */
 	function findPrefixes(property, noAutofill) {
 		var result = [];
-		_.each(vendorPrefixes, function(obj, prefix) {
+		$.each(vendorPrefixes, function(obj, prefix) {
 			if (hasPrefix(property, prefix)) {
 				result.push(prefix);
 			}
@@ -10356,7 +9297,7 @@ emmet.define('cssResolver', function(require, _) {
 		
 		if (!result.length && !noAutofill) {
 			// add all non-obsolete prefixes
-			_.each(vendorPrefixes, function(obj, prefix) {
+			$.each(vendorPrefixes, function(obj, prefix) {
 				if (!obj.obsolete)
 					result.push(prefix);
 			});
@@ -10366,16 +9307,16 @@ emmet.define('cssResolver', function(require, _) {
 	}
 	
 	function addPrefix(name, obj) {
-		if (_.isString(obj))
+		if ($.isString(obj))
 			obj = {prefix: obj};
 		
-		vendorPrefixes[name] = _.extend({}, prefixObj, obj);
+		vendorPrefixes[name] = $.extend({}, prefixObj, obj);
 	}
 	
 	function getSyntaxPreference(name, syntax) {
 		if (syntax) {
 			var val = prefs.get(syntax + '.' + name);
-			if (!_.isUndefined(val))
+			if (!$.isUndefined(val))
 				return val;
 		}
 		
@@ -10405,7 +9346,7 @@ emmet.define('cssResolver', function(require, _) {
 	 * @returns {String}
 	 */
 	function transformSnippet(snippet, isImportant, syntax) {
-		if (!_.isString(snippet))
+		if (!$.isString(snippet))
 			snippet = snippet.data;
 		
 		if (!isSingleProperty(snippet))
@@ -10428,15 +9369,15 @@ emmet.define('cssResolver', function(require, _) {
 	 * @returns {Array}
 	 */
 	function parseList(list) {
-		var result = _.map((list || '').split(','), require('utils').trim);
+		var result = $.map((list || '').split(','), require('utils').trim);
 		return result.length ? result : null;
 	}
 	
 	function getProperties(key) {
 		var list = prefs.getArray(key);
-		_.each(prefs.getArray(key + 'Addon'), function(prop) {
+		$.each(prefs.getArray(key + 'Addon'), function(prop) {
 			if (prop.charAt(0) == '-') {
-				list = _.without(list, prop.substr(1));
+				list = $.without(list, prop.substr(1));
 			} else {
 				if (prop.charAt(0) == '+')
 					prop = prop.substr(1);
@@ -10477,7 +9418,7 @@ emmet.define('cssResolver', function(require, _) {
 	 * @param {String} syntax
 	 */
 	require('resources').addResolver(function(node, syntax) {
-		if (_.include(cssSyntaxes, syntax) && node.isElement()) {
+		if ($.include(cssSyntaxes, syntax) && node.isElement()) {
 			return module.expandToSnippet(node.abbreviation, syntax);
 		}
 		
@@ -10495,7 +9436,7 @@ emmet.define('cssResolver', function(require, _) {
 	 * @param {String} profile
 	 */
 	ea.addHandler(function(editor, syntax, profile) {
-		if (!_.include(cssSyntaxes, syntax)) {
+		if (!$.include(cssSyntaxes, syntax)) {
 			return false;
 		}
 		
@@ -10553,7 +9494,7 @@ emmet.define('cssResolver', function(require, _) {
 		 * @returns {Array}
 		 */
 		listPrefixes: function() {
-			return _.map(vendorPrefixes, function(obj) {
+			return $.map(vendorPrefixes, function(obj) {
 				return obj.prefix;
 			});
 		},
@@ -10678,7 +9619,7 @@ emmet.define('cssResolver', function(require, _) {
 					stream.match(/^t|[0-9a-f]+/i, true);
 					values.push(stream.current());
 				} else if (ch == '-') {
-					if (isValidKeyword(_.last(values)) || 
+					if (isValidKeyword($.last(values)) || 
 							( stream.start && isNumeric(str.charAt(stream.start - 1)) )
 						) {
 						stream.start = stream.pos;
@@ -10694,7 +9635,7 @@ emmet.define('cssResolver', function(require, _) {
 				stream.start = stream.pos;
 			}
 			
-			return _.map(_.compact(values), normalizeValue);
+			return $.map($.compact(values), normalizeValue);
 		},
 		
 		/**
@@ -10729,7 +9670,7 @@ emmet.define('cssResolver', function(require, _) {
 			property = (property || '').toLowerCase();
 			var unitlessProps = prefs.getArray('css.unitlessProperties');
 			return value.replace(/^(\-?[0-9\.]+)([a-z]*)$/, function(str, val, unit) {
-				if (!unit && (val == '0' || _.include(unitlessProps, property)))
+				if (!unit && (val == '0' || $.include(unitlessProps, property)))
 					return val;
 				
 				if (!unit)
@@ -10767,7 +9708,7 @@ emmet.define('cssResolver', function(require, _) {
 			// no abbreviated resource, parse abbreviation
 			var prefixData = this.extractPrefixes(abbr);
 			var valuesData = this.extractValues(prefixData.property);
-			var abbrData = _.extend(prefixData, valuesData);
+			var abbrData = $.extend(prefixData, valuesData);
 			
 			if (!snippet) {
 				snippet = resources.findSnippet(syntax, abbrData.property);
@@ -10782,7 +9723,7 @@ emmet.define('cssResolver', function(require, _) {
 			
 			if (!snippet) {
 				snippet = abbrData.property + ':' + defaultValue;
-			} else if (!_.isString(snippet)) {
+			} else if (!$.isString(snippet)) {
 				snippet = snippet.data;
 			}
 			
@@ -10793,7 +9734,7 @@ emmet.define('cssResolver', function(require, _) {
 			var snippetObj = this.splitSnippet(snippet);
 			var result = [];
 			if (!value && abbrData.values) {
-				value = _.map(abbrData.values, function(val) {
+				value = $.map(abbrData.values, function(val) {
 					return this.normalizeValue(val, snippetObj.name);
 				}, this).join(' ') + ';';
 			}
@@ -10806,7 +9747,7 @@ emmet.define('cssResolver', function(require, _) {
 				
 				
 			var names = [], propName;
-			_.each(prefixes, function(p) {
+			$.each(prefixes, function(p) {
 				if (p in vendorPrefixes) {
 					propName = vendorPrefixes[p].transformName(snippetObj.name);
 					names.push(propName);
@@ -10821,7 +9762,7 @@ emmet.define('cssResolver', function(require, _) {
 			
 			if (prefs.get('css.alignVendor')) {
 				var pads = require('utils').getStringsPads(names);
-				result = _.map(result, function(prop, i) {
+				result = $.map(result, function(prop, i) {
 					return pads[i] + prop;
 				});
 			}
@@ -10838,11 +9779,11 @@ emmet.define('cssResolver', function(require, _) {
 		 */
 		expandToSnippet: function(abbr, syntax) {
 			var snippet = this.expand(abbr, null, syntax);
-			if (_.isArray(snippet)) {
+			if ($.isArray(snippet)) {
 				return snippet.join('\n');
 			}
 			
-			if (!_.isString(snippet))
+			if (!$.isString(snippet))
 				return snippet.data;
 			
 			return String(snippet);
@@ -10884,7 +9825,7 @@ emmet.define('cssResolver', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('cssGradient', function(require, _) {
+emmet.define('cssGradient', function(require, $) {
 	var defaultLinearDirections = ['top', 'to bottom', '0deg'];
 	/** Back-reference to current module */
 	var module = null;
@@ -10944,7 +9885,7 @@ emmet.define('cssGradient', function(require, _) {
 		
 		// add last token
 		colorStops.push(stream.current());
-		colorStops = _.compact(_.map(colorStops, normalizeSpace));
+		colorStops = $.compact($.map(colorStops, normalizeSpace));
 		
 		if (!colorStops.length)
 			return null;
@@ -10957,7 +9898,7 @@ emmet.define('cssGradient', function(require, _) {
 		return {
 			type: 'linear',
 			direction: direction,
-			colorStops: _.map(colorStops, parseColorStop)
+			colorStops: $.map(colorStops, parseColorStop)
 		};
 	}
 	
@@ -11021,7 +9962,7 @@ emmet.define('cssGradient', function(require, _) {
 		}
 		
 		if (snippet) {
-			if (!_.isString(snippet)) {
+			if (!$.isString(snippet)) {
 				snippet = snippet.data;
 			}
 			
@@ -11036,7 +9977,7 @@ emmet.define('cssGradient', function(require, _) {
 	function fillImpliedPositions(colorStops) {
 		var from = 0;
 		
-		_.each(colorStops, function(cs, i) {
+		$.each(colorStops, function(cs, i) {
 			// make sure that first and last positions are defined
 			if (!i)
 				return cs.position = cs.position || 0;
@@ -11047,7 +9988,7 @@ emmet.define('cssGradient', function(require, _) {
 			if ('position' in cs) {
 				var start = colorStops[from].position || 0;
 				var step = (cs.position - start) / (i - from);
-				_.each(colorStops.slice(from, i), function(cs2, j) {
+				$.each(colorStops.slice(from, i), function(cs2, j) {
 					cs2.position = start + step * j;
 				});
 				
@@ -11064,7 +10005,7 @@ emmet.define('cssGradient', function(require, _) {
 	function textualDirection(direction) {
 		var angle = parseFloat(direction);
 		
-		if(!_.isNaN(angle)) {
+		if(!$.isNaN(angle)) {
 			switch(angle % 360) {
 				case 0:   return 'left';
 				case 90:  return 'bottom';
@@ -11097,7 +10038,7 @@ emmet.define('cssGradient', function(require, _) {
 	function getPrefixedNames(name) {
 		var prefixes = prefs.getArray('css.gradient.prefixes');
 		var names = prefixes 
-			? _.map(prefixes, function(p) {
+			? $.map(prefixes, function(p) {
 				return '-' + p + '-' + name;
 			}) 
 			: [];
@@ -11124,7 +10065,7 @@ emmet.define('cssGradient', function(require, _) {
 			});
 		}
 		
-		_.each(prefs.getArray('css.gradient.prefixes'), function(prefix) {
+		$.each(prefs.getArray('css.gradient.prefixes'), function(prefix) {
 			var name = css.prefixed(propertyName, prefix);
 			if (prefix == 'webkit' && prefs.get('css.gradient.oldWebkit')) {
 				try {
@@ -11166,7 +10107,7 @@ emmet.define('cssGradient', function(require, _) {
 		
 		// first, remove all properties within CSS rule with the same name and
 		// gradient definition
-		_.each(rule.getAll(getPrefixedNames(property.name())), function(item) {
+		$.each(rule.getAll(getPrefixedNames(property.name())), function(item) {
 			if (item != property && /gradient/i.test(item.value())) {
 				if (item.styleSeparator.length < sep.length) {
 					sep = item.styleSeparator;
@@ -11209,28 +10150,28 @@ emmet.define('cssGradient', function(require, _) {
 		
 		// align prefixed values
 		if (alignVendor) {
-			var values = _.pluck(propsToInsert, 'value');
-			var names = _.pluck(propsToInsert, 'name');
+			var values = $.pluck(propsToInsert, 'value');
+			var names = $.pluck(propsToInsert, 'name');
 			values.push(property.value());
 			names.push(property.name());
 			
-			var valuePads = utils.getStringsPads(_.map(values, function(v) {
+			var valuePads = utils.getStringsPads($.map(values, function(v) {
 				return v.substring(0, v.indexOf('('));
 			}));
 			
 			var namePads = utils.getStringsPads(names);
-			property.name(_.last(namePads) + property.name());
+			property.name($.last(namePads) + property.name());
 			
-			_.each(propsToInsert, function(prop, i) {
+			$.each(propsToInsert, function(prop, i) {
 				prop.name = namePads[i] + prop.name;
 				prop.value = valuePads[i] + prop.value;
 			});
 			
-			property.value(_.last(valuePads) + property.value());
+			property.value($.last(valuePads) + property.value());
 		}
 		
 		// put vendor-prefixed definitions before current rule
-		_.each(propsToInsert, function(prop) {
+		$.each(propsToInsert, function(prop) {
 			rule.add(prop.name, prop.value, rule.indexOf(property));
 		});
 	}
@@ -11241,7 +10182,7 @@ emmet.define('cssGradient', function(require, _) {
 	function findGradient(cssProp) {
 		var value = cssProp.value();
 		var gradient = null;
-		var matchedPart = _.find(cssProp.valueParts(), function(part) {
+		var matchedPart = $.find(cssProp.valueParts(), function(part) {
 			return gradient = module.parse(part.substring(value));
 		});
 		
@@ -11296,15 +10237,15 @@ emmet.define('cssGradient', function(require, _) {
 			var end = css.getSyntaxPreference('propertyEnd', syntax);
 			
 			if (require('preferences').get('css.alignVendor')) {
-				var pads = require('utils').getStringsPads(_.map(props, function(prop) {
+				var pads = require('utils').getStringsPads($.map(props, function(prop) {
 					return prop.value.substring(0, prop.value.indexOf('('));
 				}));
-				_.each(props, function(prop, i) {
+				$.each(props, function(prop, i) {
 					prop.value = pads[i] + prop.value;
 				});
 			}
 			
-			props = _.map(props, function(item) {
+			props = $.map(props, function(item) {
 				return item.name + sep + item.value + end;
 			});
 			
@@ -11331,7 +10272,7 @@ emmet.define('cssGradient', function(require, _) {
 			if (!cssProp) {
 				// in case user just started writing CSS property
 				// and didn't include semicolon–try another approach
-				cssProp = _.find(cssRule.list(), function(elem) {
+				cssProp = $.find(cssRule.list(), function(elem) {
 					return elem.range(true).end == pos;
 				});
 			}
@@ -11351,7 +10292,7 @@ emmet.define('cssGradient', function(require, _) {
 	 */
 	require('expandAbbreviation').addHandler(function(editor, syntax, profile) {
 		var info = require('editorUtils').outputInfo(editor, syntax, profile);
-		if (!_.include(cssSyntaxes, info.syntax))
+		if (!$.include(cssSyntaxes, info.syntax))
 			return false;
 		
 		// let's see if we are expanding gradient definition
@@ -11418,7 +10359,7 @@ emmet.define('cssGradient', function(require, _) {
 		};
 		
 		// reflect value for properties with the same name
-		_.each(property.parent.getAll(getPrefixedNames(property.name())), function(prop) {
+		$.each(property.parent.getAll(getPrefixedNames(property.name())), function(prop) {
 			if (prop === property)
 				return;
 			
@@ -11464,16 +10405,16 @@ emmet.define('cssGradient', function(require, _) {
 		 * @returns {String}
 		 */
 		oldWebkitLinearGradient: function(gradient) {
-			if (_.isString(gradient))
+			if ($.isString(gradient))
 				gradient = this.parse(gradient);
 			
 			if (!gradient)
 				return null;
 			
-			var colorStops = _.map(gradient.colorStops, _.clone);
+			var colorStops = $.map(gradient.colorStops, $.clone);
 			
 			// normalize color-stops position
-			_.each(colorStops, function(cs) {
+			$.each(colorStops, function(cs) {
 				if (!('position' in cs)) // implied position
 					return;
 				
@@ -11487,7 +10428,7 @@ emmet.define('cssGradient', function(require, _) {
 			fillImpliedPositions(colorStops);
 			
 			// transform color-stops into string representation
-			colorStops = _.map(colorStops, function(cs, i) {
+			colorStops = $.map(colorStops, function(cs, i) {
 				if (!cs.position && !i)
 					return 'from(' + cs.color + ')';
 				
@@ -11515,7 +10456,7 @@ emmet.define('cssGradient', function(require, _) {
 				var fn = (prefix ? '-' + prefix + '-' : '') + 'linear-gradient';
 				
 				// transform color-stops
-				var colorStops = _.map(gradient.colorStops, function(cs) {
+				var colorStops = $.map(gradient.colorStops, function(cs) {
 					return cs.color + ('position' in cs 
 							? ' ' + cs.position + (cs.unit || '')
 							: '');
@@ -11523,7 +10464,7 @@ emmet.define('cssGradient', function(require, _) {
 				
 				if (gradient.direction 
 						&& (!prefs.get('css.gradient.omitDefaultDirection') 
-						|| !_.include(defaultLinearDirections, gradient.direction))) {
+						|| !$.include(defaultLinearDirections, gradient.direction))) {
 					colorStops.unshift(gradient.direction);
 				}
 				
@@ -11537,12 +10478,12 @@ emmet.define('cssGradient', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/** @type HandlerList */
 	var generators = require('handlerList').create();
 	var resources = require('resources');
 	
-	_.extend(resources, {
+	$.extend(resources, {
 		/**
 		 * Add generator. A generator function <code>fn</code> will be called 
 		 * only if current abbreviation matches <code>regexp</code> regular 
@@ -11554,7 +10495,7 @@ emmet.exec(function(require, _) {
 		 * {@link HandlerList#add()} method
 		 */
 		addGenerator: function(regexp, fn, options) {
-			if (_.isString(regexp))
+			if ($.isString(regexp))
 				regexp = new RegExp(regexp);
 			
 			generators.add(function(node, syntax) {
@@ -11569,7 +10510,7 @@ emmet.exec(function(require, _) {
 	});
 	
 	resources.addResolver(function(node, syntax) {
-		return generators.exec(null, _.toArray(arguments));
+		return generators.exec(null, $.toArray(arguments));
 	});
 });/**
  * Module for resolving tag names: returns best matched tag name for child
@@ -11578,7 +10519,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.define('tagName', function(require, _) {
+emmet.define('tagName', function(require, $) {
 	var elementTypes = {
 //		empty: 'area,base,basefont,br,col,frame,hr,img,input,isindex,link,meta,param,embed,keygen,command'.split(','),
 		empty: [],
@@ -11668,7 +10609,7 @@ emmet.define('tagName', function(require, _) {
 		 * @returns {Boolean}
 		 */
 		isTypeOf: function(name, type) {
-			return _.include(elementTypes[type], name);
+			return $.include(elementTypes[type], name);
 		},
 		
 		/**
@@ -11698,7 +10639,7 @@ emmet.define('tagName', function(require, _) {
 				elementTypes[collection] = [];
 			
 			var col = this.getCollection(collection);
-			if (!_.include(col, name))
+			if (!$.include(col, name))
 				col.push(name);
 		},
 		
@@ -11710,7 +10651,7 @@ emmet.define('tagName', function(require, _) {
 		 */
 		removeElementFromCollection: function(name, collection) {
 			if (collection in elementTypes) {
-				elementTypes[collection] = _.without(this.getCollection(collection), name);
+				elementTypes[collection] = $.without(this.getCollection(collection), name);
 			}
 		},
 		
@@ -11733,7 +10674,7 @@ emmet.define('tagName', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var prefs = require('preferences');
 	prefs.define('bem.elementSeparator', '__', 'Class name’s element separator.');
 	prefs.define('bem.modifierSeparator', '_', 'Class name’s modifier separator.');
@@ -11770,19 +10711,19 @@ emmet.exec(function(require, _) {
 		
 		// guess best match for block name
 		var reBlockName = /^[a-z]\-/i;
-		item.__bem.block = _.find(classNames, function(name) {
+		item.__bem.block = $.find(classNames, function(name) {
 			return reBlockName.test(name);
 		});
 		
 		// guessing doesn't worked, pick first class name as block name
 		if (!item.__bem.block) {
 			reBlockName = /^[a-z]/i;
-			item.__bem.block = _.find(classNames, function(name) {
+			item.__bem.block = $.find(classNames, function(name) {
 				return reBlockName.test(name);
 			}) || '';
 		}
 		
-		classNames = _.chain(classNames)
+		classNames = $.chain(classNames)
 			.map(function(name) {return processClassName(name, item);})
 			.flatten()
 			.uniq()
@@ -11937,16 +10878,16 @@ emmet.exec(function(require, _) {
 	 * It does several things:<br>
 	 * <ul>
 	 * <li>Expands complex class name (according to BEM symbol semantics):
-	 * .block__elem_modifier → .block.block__elem.block__elem_modifier
+	 * .block__elem_modifier ? .block.block__elem.block__elem_modifier
 	 * </li>
 	 * <li>Inherits block name on child elements: 
-	 * .b-block > .__el > .__el → .b-block > .b-block__el > .b-block__el__el
+	 * .b-block > .__el > .__el ? .b-block > .b-block__el > .b-block__el__el
 	 * </li>
 	 * <li>Treats first dash symbol as '__'</li>
 	 * <li>Double underscore (or typographic '–') is also treated as an element 
 	 * level lookup, e.g. ____el will search for element definition in parent’s 
 	 * parent element:
-	 * .b-block > .__el1 > .____el2 → .b-block > .b-block__el1 > .b-block__el2
+	 * .b-block > .__el1 > .____el2 ? .b-block > .b-block__el1 > .b-block__el2
 	 * </li>
 	 * </ul>
 	 * 
@@ -11958,7 +10899,7 @@ emmet.exec(function(require, _) {
 			bemParse(tree, profile);
 		
 		var abbrUtils = require('abbreviationUtils');
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			process(item, profile);
 			if (!abbrUtils.isSnippet(item) && item.start)
 				shouldRunHtmlFilter = true;
@@ -11989,7 +10930,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	// define some preferences
 	/** @type emmet.preferences */
 	var prefs = require('preferences');
@@ -11998,7 +10939,7 @@ emmet.exec(function(require, _) {
 			'\n<!-- /<%= attr("id", "#") %><%= attr("class", ".") %> -->',
 			'A definition of comment that should be placed <i>after</i> matched '
 			+ 'element when <code>comment</code> filter is applied. This definition '
-			+ 'is an ERB-style template passed to <code>_.template()</code> '
+			+ 'is an ERB-style template passed to <code>$.template()</code> '
 			+ 'function (see Underscore.js docs for details). In template context, '
 			+ 'the following properties and functions are availabe:\n'
 			+ '<ul>'
@@ -12039,7 +10980,7 @@ emmet.exec(function(require, _) {
 		// check if comments should be added
 		var trigger = prefs.get('filter.commentTrigger');
 		if (trigger != '*') {
-			var shouldAdd = _.find(trigger.split(','), function(name) {
+			var shouldAdd = $.find(trigger.split(','), function(name) {
 				return !!node.attribute(utils.trim(name));
 			});
 			if (!shouldAdd) return;
@@ -12068,7 +11009,7 @@ emmet.exec(function(require, _) {
 	
 	function process(tree, before, after) {
 		var abbrUtils = require('abbreviationUtils');
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (abbrUtils.isBlock(item))
 				addComments(item, before, after);
 			
@@ -12079,8 +11020,8 @@ emmet.exec(function(require, _) {
 	}
 	
 	require('filters').add('c', function(tree) {
-		var templateBefore = _.template(prefs.get('filter.commentBefore'));
-		var templateAfter = _.template(prefs.get('filter.commentAfter'));
+		var templateBefore = $.template(prefs.get('filter.commentBefore'));
+		var templateAfter = $.template(prefs.get('filter.commentAfter'));
 		
 		return process(tree, templateBefore, templateAfter);
 	});
@@ -12090,7 +11031,7 @@ emmet.exec(function(require, _) {
  * @author Sergey Chikuyonok (serge.che@gmail.com)
  * @link http://chikuyonok.ru
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var charMap = {
 		'<': '&lt;',
 		'>': '&gt;',
@@ -12104,7 +11045,7 @@ emmet.exec(function(require, _) {
 	}
 	
 	require('filters').add('e', function process(tree) {
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			item.start = escapeChars(item.start);
 			item.end = escapeChars(item.end);
 			item.content = escapeChars(item.content);
@@ -12126,7 +11067,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _){
+emmet.exec(function(require, $){
 	var placeholder = '%s';
 	
 	/** @type preferences */
@@ -12143,7 +11084,7 @@ emmet.exec(function(require, _){
 	 * @returns {String}
 	 */
 	function getIndentation(node) {
-		if (_.include(prefs.getArray('format.noIndentTags') || [], node.name())) {
+		if ($.include(prefs.getArray('format.noIndentTags') || [], node.name())) {
 			return '';
 		}
 		
@@ -12199,7 +11140,7 @@ emmet.exec(function(require, _){
 	function shouldFormatInline(node, profile) {
 		var nodeCount = 0;
 		var abbrUtils = require('abbreviationUtils');
-		return !!_.find(node.children, function(child) {
+		return !!$.find(node.children, function(child) {
 			if (child.isTextNode() || !abbrUtils.isInline(child))
 				nodeCount = 0;
 			else if (abbrUtils.isInline(child))
@@ -12240,7 +11181,7 @@ emmet.exec(function(require, _){
 	 */
 	function shouldBreakInsideInline(node, profile) {
 		var abbrUtils = require('abbreviationUtils');
-		var hasBlockElems = _.any(node.children, function(child) {
+		var hasBlockElems = $.any(node.children, function(child) {
 			if (abbrUtils.isSnippet(child))
 				return false;
 			
@@ -12272,7 +11213,7 @@ emmet.exec(function(require, _){
 		if (profile.tag_nl !== false) {
 			var forceNl = profile.tag_nl === true && (profile.tag_nl_leaf || item.children.length);
 			if (!forceNl) {
-				forceNl = _.include(prefs.getArray('format.forceIndentationForTags') || [], item.name());
+				forceNl = $.include(prefs.getArray('format.forceIndentationForTags') || [], item.name());
 			}
 			
 			// formatting block-level elements
@@ -12311,7 +11252,7 @@ emmet.exec(function(require, _){
 		level = level || 0;
 		var abbrUtils = require('abbreviationUtils');
 		
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (abbrUtils.isSnippet(item))
 				processSnippet(item, profile, level);
 			else
@@ -12331,7 +11272,7 @@ emmet.exec(function(require, _){
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var childToken = '${child}';
 	
 	function transformClassName(className) {
@@ -12349,7 +11290,7 @@ emmet.exec(function(require, _) {
 		var attrQuote = profile.attributeQuote();
 		var cursor = profile.cursor();
 		
-		_.each(tag.attributeList(), function(a) {
+		$.each(tag.attributeList(), function(a) {
 			var attrName = profile.attributeName(a.name);
 			switch (attrName.toLowerCase()) {
 				// use short notation for ID and CLASS attributes
@@ -12435,7 +11376,7 @@ emmet.exec(function(require, _) {
 			tree = require('filters').apply(tree, '_format', profile);
 		}
 		
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (!abbrUtils.isSnippet(item))
 				processTag(item, profile, level);
 			
@@ -12453,7 +11394,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	/**
 	 * Creates HTML attributes string from tag according to profile settings
 	 * @param {AbbreviationNode} node
@@ -12463,7 +11404,7 @@ emmet.exec(function(require, _) {
 		var attrQuote = profile.attributeQuote();
 		var cursor = profile.cursor();
 		
-		return _.map(node.attributeList(), function(a) {
+		return $.map(node.attributeList(), function(a) {
 			var attrName = profile.attributeName(a.name);
 			return ' ' + attrName + '=' + attrQuote + (a.value || cursor) + attrQuote;
 		}).join('');
@@ -12534,7 +11475,7 @@ emmet.exec(function(require, _) {
 			tree = require('filters').apply(tree, '_format', profile);
 		}
 		
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (!abbrUtils.isSnippet(item))
 				processTag(item, profile, level);
 			
@@ -12552,14 +11493,14 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var rePad = /^\s+/;
 	var reNl = /[\n\r]/g;
 	
 	require('filters').add('s', function process(tree, profile, level) {
 		var abbrUtils = require('abbreviationUtils');
 		
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (!abbrUtils.isSnippet(item)) {
 				// remove padding from item 
 				item.start = item.start.replace(rePad, '');
@@ -12591,7 +11532,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	require('preferences').define('filter.trimRegexp', '[\\s|\\u00a0]*[\\d|#|\\-|\*|\\u2022]+\\.?\\s*',
 			'Regular expression used to remove list markers (numbers, dashes, ' 
 			+ 'bullets, etc.) in <code>t</code> (trim) filter. The trim filter '
@@ -12599,7 +11540,7 @@ emmet.exec(function(require, _) {
 			+ 'documents (for example, Word documents).');
 	
 	function process(tree, re) {
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (item.content)
 				item.content = item.content.replace(re, '');
 			
@@ -12625,7 +11566,7 @@ emmet.exec(function(require, _) {
  * @param {Function} require
  * @param {Underscore} _
  */
-emmet.exec(function(require, _) {
+emmet.exec(function(require, $) {
 	var tags = {
 		'xsl:variable': 1,
 		'xsl:with-param': 1
@@ -12641,7 +11582,7 @@ emmet.exec(function(require, _) {
 	
 	require('filters').add('xsl', function process(tree) {
 		var abbrUtils = require('abbreviationUtils');
-		_.each(tree.children, function(item) {
+		$.each(tree.children, function(item) {
 			if (!abbrUtils.isSnippet(item)
 					&& (item.name() || '').toLowerCase() in tags 
 					&& item.children.length)
@@ -12669,7 +11610,7 @@ emmet.exec(function(require, _) {
  * @constructor
  * @memberOf __loremIpsumGeneratorDefine
  */
-emmet.define('lorem', function(require, _) {
+emmet.define('lorem', function(require, $) {
 	var langs = {
 		en: {
 			common: ['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipisicing', 'elit'],
@@ -12704,33 +11645,33 @@ emmet.define('lorem', function(require, _) {
 	             'maxime', 'corrupti']
 		},
 		ru: {
-			common: ['далеко-далеко', 'за', 'словесными', 'горами', 'в стране', 'гласных', 'и согласных', 'живут', 'рыбные', 'тексты'],
-			words: ['вдали', 'от всех', 'они', 'буквенных', 'домах', 'на берегу', 'семантика', 
-		            'большого', 'языкового', 'океана', 'маленький', 'ручеек', 'даль', 
-		            'журчит', 'по всей', 'обеспечивает', 'ее','всеми', 'необходимыми', 
-		            'правилами', 'эта', 'парадигматическая', 'страна', 'которой', 'жаренные', 
-		            'предложения', 'залетают', 'прямо', 'рот', 'даже', 'всемогущая', 
-		            'пунктуация', 'не', 'имеет', 'власти', 'над', 'рыбными', 'текстами', 
-		            'ведущими', 'безорфографичный', 'образ', 'жизни', 'однажды', 'одна', 
-		            'маленькая', 'строчка','рыбного', 'текста', 'имени', 'lorem', 'ipsum', 
-		            'решила', 'выйти', 'большой', 'мир', 'грамматики', 'великий', 'оксмокс', 
-		            'предупреждал', 'о', 'злых', 'запятых', 'диких', 'знаках', 'вопроса', 
-		            'коварных', 'точках', 'запятой', 'но', 'текст', 'дал', 'сбить', 
-		            'себя', 'толку', 'он', 'собрал', 'семь', 'своих', 'заглавных', 'букв', 
-		            'подпоясал', 'инициал', 'за', 'пояс', 'пустился', 'дорогу', 
-		            'взобравшись', 'первую', 'вершину', 'курсивных', 'гор', 'бросил', 
-		            'последний', 'взгляд', 'назад', 'силуэт', 'своего', 'родного', 'города', 
-		            'буквоград', 'заголовок', 'деревни', 'алфавит', 'подзаголовок', 'своего', 
-		            'переулка', 'грустный', 'реторический', 'вопрос', 'скатился', 'его', 
-		            'щеке', 'продолжил', 'свой', 'путь', 'дороге', 'встретил', 'рукопись', 
-		            'она', 'предупредила',  'моей', 'все', 'переписывается', 'несколько', 
-		            'раз', 'единственное', 'что', 'меня', 'осталось', 'это', 'приставка', 
-		            'возвращайся', 'ты', 'лучше', 'свою', 'безопасную', 'страну', 'послушавшись', 
-		            'рукописи', 'наш', 'продолжил', 'свой', 'путь', 'вскоре', 'ему', 
-		            'повстречался', 'коварный', 'составитель', 'рекламных', 'текстов', 
-		            'напоивший', 'языком', 'речью', 'заманивший', 'свое', 'агенство', 
-		            'которое', 'использовало', 'снова', 'снова', 'своих', 'проектах', 
-		            'если', 'переписали', 'то', 'живет', 'там', 'до', 'сих', 'пор']
+			common: ['??????-??????', '??', '??????????', '??????', '? ??????', '???????', '? ?????????', '?????', '??????', '??????'],
+			words: ['?????', '?? ????', '???', '?????????', '?????', '?? ??????', '?????????', 
+		            '????????', '?????????', '??????', '?????????', '??????', '????', 
+		            '??????', '?? ????', '????????????', '??','?????', '????????????', 
+		            '?????????', '???', '?????????????????', '??????', '???????', '????????', 
+		            '???????????', '????????', '?????', '???', '????', '??????????', 
+		            '??????????', '??', '?????', '??????', '???', '???????', '????????', 
+		            '????????', '????????????????', '?????', '?????', '???????', '????', 
+		            '?????????', '???????','???????', '??????', '?????', 'lorem', 'ipsum', 
+		            '??????', '?????', '???????', '???', '??????????', '???????', '???????', 
+		            '????????????', '?', '????', '???????', '?????', '??????', '???????', 
+		            '????????', '??????', '???????', '??', '?????', '???', '?????', 
+		            '????', '?????', '??', '??????', '????', '?????', '?????????', '????', 
+		            '?????????', '???????', '??', '????', '????????', '??????', 
+		            '???????????', '??????', '???????', '?????????', '???', '??????', 
+		            '?????????', '??????', '?????', '??????', '??????', '???????', '??????', 
+		            '?????????', '?????????', '???????', '???????', '????????????', '??????', 
+		            '????????', '????????', '????????????', '??????', '????????', '???', 
+		            '????', '?????????', '????', '????', '??????', '????????', '????????', 
+		            '???', '????????????',  '????', '???', '??????????????', '?????????', 
+		            '???', '????????????', '???', '????', '????????', '???', '?????????', 
+		            '???????????', '??', '?????', '????', '??????????', '??????', '????????????', 
+		            '????????', '???', '?????????', '????', '????', '??????', '???', 
+		            '????????????', '????????', '???????????', '?????????', '???????', 
+		            '?????????', '??????', '?????', '??????????', '????', '????????', 
+		            '???????', '????????????', '?????', '?????', '?????', '????????', 
+		            '????', '??????????', '??', '?????', '???', '??', '???', '???']
 		}
 	};
 
@@ -12784,17 +11725,17 @@ emmet.define('lorem', function(require, _) {
 		var result = [];
 		while (result.length < iterations) {
 			var randIx = randint(0, len - 1);
-			if (!_.include(result, randIx))
+			if (!$.include(result, randIx))
 				result.push(randIx);
 		}
 		
-		return _.map(result, function(ix) {
+		return $.map(result, function(ix) {
 			return arr[ix];
 		});
 	}
 	
 	function choice(val) {
-		if (_.isString(val))
+		if ($.isString(val))
 			return val.charAt(randint(0, val.length - 1));
 		
 		return val[randint(0, val.length - 1)];
@@ -12825,7 +11766,7 @@ emmet.define('lorem', function(require, _) {
 			totalCommas = randint(1, 4);
 		}
 
-		_.each(_.range(totalCommas), function(ix) {
+		$.each($.range(totalCommas), function(ix) {
 			if (ix < words.length - 1) {
 				words[ix] += ',';
 			}
@@ -12878,9 +11819,9 @@ emmet.define('lorem', function(require, _) {
 		 * <code>common</code> properties
 		 */
 		addLang: function(lang, data) {
-			if (_.isString(data)) {
-				data = {words: _.compact(data.split(' '))};
-			} else if (_.isArray(data)) {
+			if ($.isString(data)) {
+				data = {words: $.compact(data.split(' '))};
+			} else if ($.isArray(data)) {
 				data = {words: data};
 			}
 
@@ -12892,7 +11833,7 @@ emmet.define('lorem', function(require, _) {
  * @param {Function} require
  * @param {Underscore} _  
  */
-emmet.define('bootstrap', function(require, _) {
+emmet.define('bootstrap', function(require, $) {
 var snippets = {
 	"variables": {
 		"lang": "en",
